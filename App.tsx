@@ -7,12 +7,14 @@ import SpecialRequest from './components/SpecialRequest';
 import { Product, UserRole, CartItem, Order } from './types';
 import { INITIAL_PRODUCTS } from './services/mockData';
 import { Icons } from './constants';
-import { syncToSheets } from './services/googleSheetsService';
+import { syncToSheets, getUserRole } from './services/googleSheetsService';
 
 const App: React.FC = () => {
   const [role, setRole] = useState<UserRole | null>(null);
   const [userEmail, setUserEmail] = useState('');
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [signupRole, setSignupRole] = useState<UserRole>(UserRole.USER);
+  const [adminKey, setAdminKey] = useState('');
   const [view, setView] = useState('home');
   const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -33,16 +35,35 @@ const App: React.FC = () => {
 
   const handleAuth = async () => {
     if (!userEmail) return alert("Please enter your email.");
+    
     setIsSyncing(true);
     
-    // Determine role before setting state to ensure sync gets accurate data
-    const detectedRole = userEmail.toLowerCase().includes('admin') ? UserRole.ADMIN : UserRole.USER;
-    
-    if (authMode === 'signup') {
-      await syncToSheets('user', { email: userEmail, role: detectedRole, timestamp: Date.now() });
+    // Login Logic: Fetch the most up-to-date role from the spreadsheet
+    if (authMode === 'login') {
+      const remoteRole = await getUserRole(userEmail);
+      if (remoteRole) {
+        setRole(remoteRole as UserRole);
+      } else {
+        // Fallback if sheet is not connected or user not found
+        const detectedRole = userEmail.toLowerCase().includes('admin') ? UserRole.ADMIN : UserRole.USER;
+        setRole(detectedRole);
+      }
+    } 
+    // Signup Logic
+    else {
+      if (signupRole === UserRole.ADMIN && adminKey !== 'AURA2024') {
+        setIsSyncing(false);
+        return alert("Invalid Staff Access Key.");
+      }
+      
+      await syncToSheets('user', { 
+        email: userEmail, 
+        role: signupRole, 
+        timestamp: Date.now() 
+      });
+      setRole(signupRole);
     }
     
-    setRole(detectedRole);
     setIsSyncing(false);
   };
 
@@ -74,7 +95,7 @@ const App: React.FC = () => {
     localStorage.removeItem('aura_cart');
     setIsCartOpen(false);
     setIsSyncing(false);
-    alert(`Order ${newOrder.id} successfully placed and logged in your Google Spreadsheet.`);
+    alert(`Order ${newOrder.id} placed.`);
   };
 
   const filteredProducts = useMemo(() => {
@@ -102,26 +123,54 @@ const App: React.FC = () => {
               <button onClick={() => setAuthMode('login')} className={`flex-1 py-2 text-xs font-bold uppercase tracking-widest rounded-lg transition-all ${authMode === 'login' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-400'}`}>Login</button>
               <button onClick={() => setAuthMode('signup')} className={`flex-1 py-2 text-xs font-bold uppercase tracking-widest rounded-lg transition-all ${authMode === 'signup' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-400'}`}>Signup</button>
             </div>
+            
             <div className="space-y-4">
+              {authMode === 'signup' && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Account Role</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button 
+                      onClick={() => setSignupRole(UserRole.USER)}
+                      className={`py-2 text-[10px] font-bold uppercase border rounded-xl transition-all ${signupRole === UserRole.USER ? 'bg-amber-50 border-amber-600 text-amber-700' : 'bg-white border-stone-200 text-stone-400'}`}
+                    >
+                      Customer
+                    </button>
+                    <button 
+                      onClick={() => setSignupRole(UserRole.ADMIN)}
+                      className={`py-2 text-[10px] font-bold uppercase border rounded-xl transition-all ${signupRole === UserRole.ADMIN ? 'bg-amber-50 border-amber-600 text-amber-700' : 'bg-white border-stone-200 text-stone-400'}`}
+                    >
+                      Administrator
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Email Address</label>
                 <input value={userEmail} onChange={e => setUserEmail(e.target.value)} type="email" placeholder="concierge@aura.com" className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" />
               </div>
+
+              {authMode === 'signup' && signupRole === UserRole.ADMIN && (
+                <div className="space-y-2 animate-in slide-in-from-top-2">
+                  <label className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Staff Access Key</label>
+                  <input type="password" value={adminKey} onChange={e => setAdminKey(e.target.value)} placeholder="Enter Staff Key" className="w-full p-3 bg-amber-50 border border-amber-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none text-amber-900" />
+                </div>
+              )}
+
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Password</label>
                 <input type="password" placeholder="••••••••" className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" />
               </div>
             </div>
+
             <button onClick={handleAuth} disabled={isSyncing} className="w-full bg-stone-900 text-white py-4 rounded-xl font-bold hover:bg-stone-800 transition-all flex items-center justify-center gap-2">
               {isSyncing && <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />}
-              {authMode === 'login' ? 'Enter Boutique' : 'Create Account & Sync'}
+              {isSyncing ? 'Verifying with Spreadsheet...' : authMode === 'login' ? 'Enter Boutique' : 'Create Account'}
             </button>
-            <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 space-y-2">
-              <h4 className="text-[10px] font-bold text-amber-800 uppercase tracking-[0.2em]">Dummy Credentials</h4>
-              <div className="grid grid-cols-2 gap-2 text-[11px] text-amber-700 font-medium">
-                <div>Admin: admin@aura.com</div><div className="text-right italic">Pass: admin123</div>
-                <div>User: user@aura.com</div><div className="text-right italic">Pass: user123</div>
-              </div>
+            
+            <div className="bg-stone-50 border border-stone-100 rounded-2xl p-4 text-[10px] text-stone-500 leading-relaxed">
+              <span className="font-bold text-stone-800 uppercase block mb-1">Role Sync Enabled</span>
+              Changes made directly in your Google Spreadsheet will take effect the next time you log in.
             </div>
           </div>
         </div>
@@ -143,7 +192,7 @@ const App: React.FC = () => {
       {isSyncing && (
         <div className="fixed top-4 right-4 bg-amber-600 text-white px-4 py-2 rounded-full shadow-lg z-[60] text-xs font-bold animate-pulse flex items-center gap-2">
           <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-          Synchronizing with Cloud...
+          Synchronizing...
         </div>
       )}
 
@@ -178,8 +227,8 @@ const App: React.FC = () => {
         />
       )}
 
-      {view === 'community' && <div className="text-center py-20 text-stone-400 italic">Community features loaded from central database.</div>}
-      {view === 'contact' && <div className="text-center py-20 text-stone-400 italic">Concierge active. Direct sync enabled.</div>}
+      {view === 'community' && <div className="text-center py-20 text-stone-400 italic">Community active.</div>}
+      {view === 'contact' && <div className="text-center py-20 text-stone-400 italic">Concierge active.</div>}
 
       {isCartOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-end p-0 md:p-4">
@@ -203,9 +252,8 @@ const App: React.FC = () => {
             </div>
             {cart.length > 0 && (
               <div className="p-8 border-t border-stone-100">
-                <button onClick={handleCheckout} className="w-full bg-stone-900 text-white py-5 rounded-2xl font-bold hover:bg-amber-600 transition-all flex items-center justify-center gap-2">
-                  {isSyncing && <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />}
-                  Confirm & Sync to Sheets (Total: ₹{cart.reduce((sum, i) => sum + (i.price * i.cartQuantity), 0).toLocaleString('en-IN')})
+                <button onClick={handleCheckout} className="w-full bg-stone-900 text-white py-5 rounded-2xl font-bold hover:bg-amber-600 transition-all">
+                  Confirm & Sync (Total: ₹{cart.reduce((sum, i) => sum + (i.price * i.cartQuantity), 0).toLocaleString('en-IN')})
                 </button>
               </div>
             )}
