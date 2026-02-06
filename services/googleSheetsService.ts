@@ -5,7 +5,7 @@
 
 // STEP 1: Replace this URL with your actual "Web App URL" from the Google Apps Script "Deploy" menu.
 // The URL should look like: https://script.google.com/macros/s/ABC_YOUR_ID_XYZ/exec
-const SCRIPT_URL = 'REPLACE_WITH_YOUR_DEPLOYED_WEB_APP_URL'; 
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbygRcPeoMCGgfuqAAwE_5vo52AuSD2t2kaD-ln8JlI7eHc5v-X5ajIbyg2ol10Awo2g/exec'; 
 
 /**
  * Helper to determine if the script URL has been updated by the user.
