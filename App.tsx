@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import Layout from './components/Layout';
 import ProductCard from './components/ProductCard';
+import ProductDetailModal from './components/ProductDetailModal';
 import AdminDashboard from './components/AdminDashboard';
 import SpecialRequest from './components/SpecialRequest';
 import Community from './components/Community';
@@ -26,6 +27,7 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('All');
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
 
   // Load Initial Data
@@ -116,6 +118,17 @@ const App: React.FC = () => {
     } finally {
       setIsSyncing(false);
     }
+  };
+
+  const handleAddToCart = (prod: Product) => {
+    setCart(prev => {
+      const existing = prev.find(item => item.id === prod.id);
+      if (existing) {
+        return prev.map(item => item.id === prod.id ? { ...item, cartQuantity: item.cartQuantity + 1 } : item);
+      }
+      return [...prev, { ...prod, cartQuantity: 1 }];
+    });
+    setIsCartOpen(true);
   };
 
   const handleCheckout = async () => {
@@ -250,7 +263,12 @@ const App: React.FC = () => {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-10">
               {filteredProducts.map(p => (
-                <ProductCard key={p.id} product={p} onAddToCart={(prod) => { setCart(prev => [...prev, { ...prod, cartQuantity: 1 }]); setIsCartOpen(true); }} />
+                <ProductCard 
+                  key={p.id} 
+                  product={p} 
+                  onAddToCart={handleAddToCart} 
+                  onViewDetails={setSelectedProduct}
+                />
               ))}
               {filteredProducts.length === 0 && (
                 <div className="col-span-full py-32 text-center text-stone-400 italic">No matches found in this collection.</div>
@@ -270,6 +288,15 @@ const App: React.FC = () => {
           onAdd={(p) => saveProducts([...products, { ...p, id: Math.random().toString(36).substr(2, 9) } as Product])}
           onUpdate={(p) => saveProducts(products.map(item => item.id === p.id ? p : item))}
           onDelete={(id) => saveProducts(products.filter(item => item.id !== id))}
+        />
+      )}
+
+      {/* Detailed Product View Modal */}
+      {selectedProduct && (
+        <ProductDetailModal 
+          product={selectedProduct} 
+          onClose={() => setSelectedProduct(null)} 
+          onAddToCart={handleAddToCart}
         />
       )}
 
@@ -294,7 +321,10 @@ const App: React.FC = () => {
                     <div>
                       <div className="font-bold text-sm text-stone-800">{item.name}</div>
                       <div className="text-[9px] text-stone-400 uppercase tracking-widest mt-0.5">{item.category}</div>
-                      <div className="text-[10px] font-medium text-amber-600 mt-1">₹{item.price.toLocaleString('en-IN')}</div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[10px] font-medium text-amber-600">₹{item.price.toLocaleString('en-IN')}</span>
+                        <span className="text-[10px] text-stone-400">× {item.cartQuantity}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
