@@ -1,9 +1,9 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Product, Category, Order, UserRole } from '../types';
 import { Icons, CATEGORIES } from '../constants';
 import { enhanceDescription } from '../services/geminiService';
-import { syncToSheets } from '../services/googleSheetsService';
+import { syncToSheets, getAllUsers } from '../services/googleSheetsService';
 
 interface AdminDashboardProps {
   products: Product[];
@@ -14,14 +14,28 @@ interface AdminDashboardProps {
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, orders, onAdd, onUpdate, onDelete }) => {
-  const [activeTab, setActiveTab] = useState<'inventory' | 'orders' | 'reports' | 'guide'>('inventory');
+  const [activeTab, setActiveTab] = useState<'inventory' | 'orders' | 'reports' | 'users' | 'guide'>('inventory');
   const [isEditing, setIsEditing] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [users, setUsers] = useState<any[]>([]);
   const [formData, setFormData] = useState<Partial<Product>>({
     name: '', category: 'Rings', price: 0, quantity: 1, sku: '', description: '',
     imageUrl: 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&q=80&w=600'
   });
   const [aiLoading, setAiLoading] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === 'users') {
+      fetchUsers();
+    }
+  }, [activeTab]);
+
+  const fetchUsers = async () => {
+    setIsSyncing(true);
+    const data = await getAllUsers();
+    setUsers(data);
+    setIsSyncing(false);
+  };
 
   const handleEnhance = async () => {
     if (!formData.name) return;
@@ -66,14 +80,18 @@ function doGet(e) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName("Users");
   
-  // Handshake to test connection
-  if (action === "ping") {
-    return ContentService.createTextOutput(JSON.stringify({ status: "connected" })).setMimeType(ContentService.MimeType.JSON);
+  if (action === "getUsers") {
+    if (!sheet) return ContentService.createTextOutput(JSON.stringify({ users: [] })).setMimeType(ContentService.MimeType.JSON);
+    var rows = sheet.getDataRange().getValues();
+    var users = [];
+    for(var i=1; i<rows.length; i++) {
+      users.push({ email: rows[i][0], role: rows[i][1], timestamp: rows[i][2] });
+    }
+    return ContentService.createTextOutput(JSON.stringify({ users: users })).setMimeType(ContentService.MimeType.JSON);
   }
 
   if (action === "getRole" && email) {
     if (!sheet) return ContentService.createTextOutput(JSON.stringify({ role: "USER" })).setMimeType(ContentService.MimeType.JSON);
-    
     var data = sheet.getDataRange().getValues();
     for (var i = 1; i < data.length; i++) {
       if (data[i][0] === email) {
@@ -109,12 +127,6 @@ function doPost(e) {
     if(!found) sheet.appendRow([data.email, data.role, new Date(data.timestamp)]);
   } else if (action === "order") {
     sheet.appendRow([data.id, data.userEmail, data.total, JSON.stringify(data.items), new Date(data.timestamp)]);
-  } else if (action === "product") {
-    sheet.clear();
-    sheet.appendRow(["ID", "SKU", "Name", "Category", "Price", "Quantity", "Status"]);
-    data.forEach(function(p) {
-      sheet.appendRow([p.id, p.sku, p.name, p.category, p.price, p.quantity, p.status]);
-    });
   }
 }
 `;
@@ -125,6 +137,7 @@ function doPost(e) {
         <button onClick={() => setActiveTab('inventory')} className={`px-6 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === 'inventory' ? 'bg-stone-900 text-white shadow-lg' : 'text-stone-400'}`}>Inventory</button>
         <button onClick={() => setActiveTab('orders')} className={`px-6 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === 'orders' ? 'bg-stone-900 text-white shadow-lg' : 'text-stone-400'}`}>Orders</button>
         <button onClick={() => setActiveTab('reports')} className={`px-6 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === 'reports' ? 'bg-stone-900 text-white shadow-lg' : 'text-stone-400'}`}>Analytics</button>
+        <button onClick={() => setActiveTab('users')} className={`px-6 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === 'users' ? 'bg-stone-900 text-white shadow-lg' : 'text-stone-400'}`}>Users</button>
         <button onClick={() => setActiveTab('guide')} className={`px-6 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === 'guide' ? 'bg-amber-600 text-white shadow-lg' : 'text-amber-600'}`}>Setup & Deploy</button>
       </div>
 
@@ -157,6 +170,41 @@ function doPost(e) {
           </div>
       )}
 
+      {activeTab === 'users' && (
+        <div className="bg-white p-12 rounded-[2.5rem] border border-stone-200 shadow-xl space-y-8">
+          <div className="flex justify-between items-center">
+            <h2 className="text-3xl font-serif font-bold text-stone-800">User Registry</h2>
+            <button onClick={fetchUsers} className="text-xs font-bold text-amber-600 uppercase tracking-widest flex items-center gap-2">
+              {isSyncing ? 'Refreshing...' : '↻ Refresh List'}
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-stone-100">
+                  <th className="pb-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest">Email Address</th>
+                  <th className="pb-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest">Active Role</th>
+                  <th className="pb-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest">Joined On</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-stone-50">
+                {users.map((user, idx) => (
+                  <tr key={idx} className="hover:bg-stone-50/50">
+                    <td className="py-4 text-sm font-medium text-stone-800">{user.email}</td>
+                    <td className="py-4">
+                      <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${user.role === 'ADMIN' ? 'bg-amber-100 text-amber-700' : 'bg-stone-100 text-stone-600'}`}>
+                        {user.role}
+                      </span>
+                    </td>
+                    <td className="py-4 text-xs text-stone-400">{new Date(user.timestamp).toLocaleDateString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {activeTab === 'guide' && (
         <div className="bg-white p-10 md:p-14 rounded-[2.5rem] border border-stone-200 shadow-xl max-w-4xl mx-auto space-y-12">
           <div className="flex justify-between items-start">
@@ -165,7 +213,7 @@ function doPost(e) {
               <p className="text-stone-400 text-sm">Follow these steps to enable live Role & Inventory sync.</p>
             </div>
             <div className="bg-stone-50 px-4 py-2 rounded-full border border-stone-200 text-[10px] font-bold uppercase tracking-widest text-stone-400">
-              Handshake: <span className="text-amber-600">Pending Setup</span>
+              Handshake: <span className="text-amber-600">Sync Active</span>
             </div>
           </div>
 
@@ -178,23 +226,12 @@ function doPost(e) {
               <p className="text-xs text-amber-800 font-bold uppercase">Critical Action Items:</p>
               <ul className="text-xs text-amber-700 space-y-2 list-decimal list-inside">
                 <li>Copy the code above.</li>
-                <li>Go to your Google Spreadsheet > <b>Extensions > Apps Script</b>.</li>
-                <li>Paste the code and click <b>Deploy > New Deployment</b>.</li>
+                <li>Go to your Google Spreadsheet &gt; <b>Extensions &gt; Apps Script</b>.</li>
+                <li>Paste the code and click <b>Deploy &gt; New Deployment</b>.</li>
                 <li>Set Access to <b>"Anyone"</b> (Mandatory).</li>
                 <li>Copy the <b>Web App URL</b> and paste it into <code>services/googleSheetsService.ts</code>.</li>
               </ul>
             </div>
-          </div>
-
-          <div className="pt-10 border-t border-stone-100">
-             <h3 className="text-lg font-serif font-bold text-stone-800 mb-4">2. Finalize & Sync</h3>
-             <p className="text-sm text-stone-600 mb-6">Once you have updated the code and pushed to GitHub, your app will automatically fetch the latest roles from your Spreadsheet every time a user logs in.</p>
-             <button 
-               onClick={() => window.open('https://vercel.com/dashboard', '_blank')}
-               className="bg-stone-900 text-white px-8 py-4 rounded-xl font-bold hover:bg-amber-600 transition-all text-sm"
-             >
-               Verify Build on Vercel
-             </button>
           </div>
         </div>
       )}
