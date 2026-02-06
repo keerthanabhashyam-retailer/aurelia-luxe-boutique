@@ -1,25 +1,25 @@
 import { GoogleGenAI } from "@google/genai";
 
 export const enhanceDescription = async (name: string, category: string) => {
-  // Use process.env.API_KEY which is injected by Vite at build time
+  // Access the API key provided via Vite's define or Vercel's env
   const apiKey = process.env.API_KEY;
   
-  // Strict check for missing, empty, or placeholder key strings
-  if (!apiKey || apiKey === 'undefined' || apiKey === '' || apiKey === '""') {
-    console.warn("Gemini API Key is not configured. Falling back to default description.");
+  // Guard clause: If key is missing or is a placeholder string, don't initialize
+  if (!apiKey || apiKey === "undefined" || apiKey === '""' || apiKey.trim() === "") {
+    console.warn("Gemini API Key not found. Using fallback description.");
     return "A beautiful piece crafted with precision and elegance.";
   }
 
   try {
-    // We only create the instance when the function is actually called
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `Write a 2-sentence luxury marketing description for a jewelry item named "${name}" in the category "${category}".`,
+      contents: `Write a 2-sentence luxury marketing description for a jewelry item named "${name}" in the category "${category}". Focus on craftsmanship.`,
     });
+
     return response.text || "A beautiful piece crafted with precision and elegance.";
   } catch (error) {
-    console.error("Gemini AI Error:", error);
+    console.error("Gemini AI error:", error);
     return "A beautiful piece crafted with precision and elegance.";
   }
 };
