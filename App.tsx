@@ -35,13 +35,17 @@ const App: React.FC = () => {
       setIsSyncing(true);
       try {
         const liveProducts = await getProducts();
-        if (liveProducts && liveProducts.length > 0) {
-          setProducts(liveProducts);
+        if (liveProducts && Array.isArray(liveProducts)) {
+          // Sanitize incoming data to remove empty/invalid rows from Sheets
+          const validProducts = liveProducts.filter(p => p && p.id && p.name);
+          if (validProducts.length > 0) {
+            setProducts(validProducts);
+          }
         } else {
           const savedProducts = localStorage.getItem('aura_products');
           if (savedProducts) {
             const parsed = JSON.parse(savedProducts);
-            if (parsed && parsed.length > 0) {
+            if (Array.isArray(parsed) && parsed.length > 0) {
               setProducts(parsed);
             }
           }
@@ -79,9 +83,11 @@ const App: React.FC = () => {
         // Validation for Admin Signup
         if (signupRole === UserRole.ADMIN) {
             if (!adminKey) {
+                setIsSyncing(false);
                 return alert("Staff Access Key is required for Administrator accounts.");
             }
             if (adminKey !== STAFF_ACCESS_KEY) {
+                setIsSyncing(false);
                 return alert("Unauthorized: The Staff Access Key provided is incorrect. Please contact the Store Owner.");
             }
         }
@@ -134,8 +140,12 @@ const App: React.FC = () => {
 
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
-      const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                            p.sku.toLowerCase().includes(searchQuery.toLowerCase());
+      // DEFENSIVE CHECK: Skip malformed products from Sheets
+      if (!p || typeof p.name !== 'string' || typeof p.sku !== 'string') return false;
+      
+      const search = searchQuery.toLowerCase();
+      const matchesSearch = p.name.toLowerCase().includes(search) || 
+                            p.sku.toLowerCase().includes(search);
       const matchesCat = activeCategory === 'All' || p.category === activeCategory;
       return matchesSearch && matchesCat;
     });
