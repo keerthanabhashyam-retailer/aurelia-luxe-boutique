@@ -1,7 +1,9 @@
+
 import React, { useState } from 'react';
-import { Product, Category, Order, CartItem } from '../types';
+import { Product, Category, Order, UserRole } from '../types';
 import { Icons, CATEGORIES } from '../constants';
 import { enhanceDescription } from '../services/geminiService';
+import { syncToSheets } from '../services/googleSheetsService';
 
 interface AdminDashboardProps {
   products: Product[];
@@ -14,6 +16,7 @@ interface AdminDashboardProps {
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, orders, onAdd, onUpdate, onDelete }) => {
   const [activeTab, setActiveTab] = useState<'inventory' | 'orders' | 'reports' | 'guide'>('inventory');
   const [isEditing, setIsEditing] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [formData, setFormData] = useState<Partial<Product>>({
     name: '', category: 'Rings', price: 0, quantity: 1, sku: '', description: '',
     imageUrl: 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&q=80&w=600'
@@ -24,15 +27,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, orders, onAdd
     if (!formData.name) return;
     setAiLoading(true);
     const desc = await enhanceDescription(formData.name, formData.category || 'Jewelry');
-    setFormData((prev: Partial<Product>) => ({ ...prev, description: desc }));
+    setFormData(prev => ({ ...prev, description: desc }));
     setAiLoading(false);
-  };
-
-  const handleEdit = (product: Product) => {
-    setFormData(product);
-    setIsEditing(product.id);
-    setActiveTab('inventory');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -58,39 +54,89 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, orders, onAdd
     setIsEditing(null);
   };
 
-  // Analytics Calculations
-  const totalRevenue = orders.reduce((sum: number, o: Order) => sum + o.total, 0);
-  const avgOrderValue = orders.length > 0 ? totalRevenue / orders.length : 0;
+  const appsScriptCode = `
+/**
+ * GOOGLE APPS SCRIPT FOR AURA JEWELRY MART
+ * Supports Role Verification (GET) and Data Logging (POST)
+ */
+
+function doGet(e) {
+  var action = e.parameter.action;
+  var email = e.parameter.email;
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("Users");
   
-  const categorySales = orders.reduce((acc: Record<string, number>, order: Order) => {
-    order.items.forEach((item: CartItem) => {
-      const cat = item.category as string;
-      acc[cat] = (acc[cat] || 0) + (item.price * item.cartQuantity);
+  // Handshake to test connection
+  if (action === "ping") {
+    return ContentService.createTextOutput(JSON.stringify({ status: "connected" })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (action === "getRole" && email) {
+    if (!sheet) return ContentService.createTextOutput(JSON.stringify({ role: "USER" })).setMimeType(ContentService.MimeType.JSON);
+    
+    var data = sheet.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (data[i][0] === email) {
+        return ContentService.createTextOutput(JSON.stringify({ role: data[i][1] })).setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+    return ContentService.createTextOutput(JSON.stringify({ role: "USER" })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function doPost(e) {
+  var params = JSON.parse(e.postData.contents);
+  var action = params.action;
+  var data = params.data;
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  var sheetName = action === "user" ? "Users" : 
+                  action === "product" ? "Products" : 
+                  action === "order" ? "Orders" : "Logs";
+                  
+  var sheet = ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
+  
+  if (action === "user") {
+    var userRows = sheet.getDataRange().getValues();
+    var found = false;
+    for(var j=0; j<userRows.length; j++) {
+       if(userRows[j][0] === data.email) {
+          sheet.getRange(j+1, 2).setValue(data.role);
+          found = true;
+          break;
+       }
+    }
+    if(!found) sheet.appendRow([data.email, data.role, new Date(data.timestamp)]);
+  } else if (action === "order") {
+    sheet.appendRow([data.id, data.userEmail, data.total, JSON.stringify(data.items), new Date(data.timestamp)]);
+  } else if (action === "product") {
+    sheet.clear();
+    sheet.appendRow(["ID", "SKU", "Name", "Category", "Price", "Quantity", "Status"]);
+    data.forEach(function(p) {
+      sheet.appendRow([p.id, p.sku, p.name, p.category, p.price, p.quantity, p.status]);
     });
-    return acc;
-  }, {} as Record<string, number>);
+  }
+}
+`;
 
   return (
     <div className="space-y-12 animate-in fade-in duration-700 pb-20">
-      {/* Tab Navigation */}
-      <div className="flex bg-white p-2 rounded-2xl border border-stone-200 w-fit overflow-x-auto shadow-sm sticky top-24 z-30">
+      <div className="flex bg-white p-2 rounded-2xl border border-stone-200 w-fit overflow-x-auto shadow-sm">
         <button onClick={() => setActiveTab('inventory')} className={`px-6 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === 'inventory' ? 'bg-stone-900 text-white shadow-lg' : 'text-stone-400'}`}>Inventory</button>
         <button onClick={() => setActiveTab('orders')} className={`px-6 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === 'orders' ? 'bg-stone-900 text-white shadow-lg' : 'text-stone-400'}`}>Orders</button>
         <button onClick={() => setActiveTab('reports')} className={`px-6 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === 'reports' ? 'bg-stone-900 text-white shadow-lg' : 'text-stone-400'}`}>Analytics</button>
-        <button onClick={() => setActiveTab('guide')} className={`px-6 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === 'guide' ? 'bg-amber-600 text-white shadow-lg' : 'text-amber-600'}`}>Manual Setup Guide</button>
+        <button onClick={() => setActiveTab('guide')} className={`px-6 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === 'guide' ? 'bg-amber-600 text-white shadow-lg' : 'text-amber-600'}`}>Setup & Deploy</button>
       </div>
 
       {activeTab === 'inventory' && (
-        <div className="space-y-12">
-          {/* Add/Edit Form */}
-          <div className="bg-white p-8 md:p-12 rounded-[2.5rem] border border-stone-200 shadow-xl relative overflow-hidden">
-            <h2 className="text-3xl font-serif font-bold text-stone-800 mb-8">{isEditing ? 'Refine Treasure' : 'Add New Treasure'}</h2>
+        <div className="bg-white p-8 md:p-12 rounded-[2.5rem] border border-stone-200 shadow-xl relative overflow-hidden">
+            <h2 className="text-3xl font-serif font-bold text-stone-800 mb-8">{isEditing ? 'Refine Selection' : 'Add New Treasure'}</h2>
             <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-2 gap-10">
               <div className="space-y-6">
-                <input required placeholder="Product Name" className="w-full p-4 bg-stone-50 border border-stone-200 rounded-2xl outline-none focus:ring-2 focus:ring-amber-500" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                <input required placeholder="Product Name" className="w-full p-4 bg-stone-50 border border-stone-200 rounded-2xl outline-none" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
                 <div className="grid grid-cols-2 gap-6">
                   <select className="p-4 bg-stone-50 border border-stone-200 rounded-2xl outline-none" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value as Category})}>
-                    {CATEGORIES.map((c: string) => <option key={c} value={c}>{c}</option>)}
+                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                   <input required placeholder="SKU" className="p-4 bg-stone-50 border border-stone-200 rounded-2xl outline-none" value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value})} />
                 </div>
@@ -102,198 +148,53 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, orders, onAdd
               <div className="space-y-6">
                 <div className="relative">
                   <textarea rows={4} placeholder="Description" className="w-full p-4 bg-stone-50 border border-stone-200 rounded-2xl outline-none" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
-                  <button type="button" onClick={handleEnhance} className="absolute right-3 bottom-3 text-amber-600 font-bold text-[10px] uppercase">{aiLoading ? 'Generating...' : '✨ AI Enhance'}</button>
+                  <button type="button" onClick={handleEnhance} className="absolute right-3 bottom-3 text-amber-600 font-bold text-[10px] uppercase">{aiLoading ? '...' : '✨ AI Stylist'}</button>
                 </div>
                 <input required placeholder="Image URL" className="w-full p-4 bg-stone-50 border border-stone-200 rounded-2xl outline-none text-xs" value={formData.imageUrl} onChange={e => setFormData({...formData, imageUrl: e.target.value})} />
-                <div className="flex gap-4">
-                  {isEditing && (
-                    <button type="button" onClick={resetForm} className="flex-1 bg-stone-100 text-stone-600 py-5 rounded-2xl font-bold hover:bg-stone-200 transition-all">Cancel</button>
-                  )}
-                  <button type="submit" className="flex-[2] bg-stone-900 text-white py-5 rounded-2xl font-bold hover:bg-amber-600 transition-all">{isEditing ? 'Update Entry' : 'Add to Catalog'}</button>
-                </div>
+                <button type="submit" className="w-full bg-stone-900 text-white py-5 rounded-2xl font-bold hover:bg-amber-600 transition-all">{isEditing ? 'Update Entry' : 'Commit to Catalog'}</button>
               </div>
             </form>
           </div>
-
-          {/* Inventory List */}
-          <div className="bg-white rounded-[2.5rem] border border-stone-200 shadow-xl overflow-hidden">
-            <div className="p-8 border-b border-stone-100 flex justify-between items-center">
-              <h3 className="text-xl font-serif font-bold">Catalog Management</h3>
-              <span className="text-xs font-bold text-stone-400 uppercase tracking-widest">{products.length} Items Total</span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead className="bg-stone-50 border-b border-stone-100 text-[10px] uppercase tracking-widest text-stone-400 font-bold">
-                  <tr>
-                    <th className="px-8 py-4">Item</th>
-                    <th className="px-8 py-4">SKU</th>
-                    <th className="px-8 py-4">Price</th>
-                    <th className="px-8 py-4">Stock</th>
-                    <th className="px-8 py-4 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-100">
-                  {products.map((p: Product) => (
-                    <tr key={p.id} className="hover:bg-stone-50/50 transition-colors">
-                      <td className="px-8 py-4">
-                        <div className="flex items-center gap-4">
-                          <img src={p.imageUrl} className="w-12 h-12 rounded-lg object-cover bg-stone-100" />
-                          <div>
-                            <div className="font-bold text-stone-800">{p.name}</div>
-                            <div className="text-[10px] text-stone-400 uppercase">{p.category}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-8 py-4 font-mono text-xs">{p.sku}</td>
-                      <td className="px-8 py-4 font-bold text-stone-900">₹{p.price.toLocaleString('en-IN')}</td>
-                      <td className="px-8 py-4">
-                        <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${
-                          p.quantity === 0 ? 'bg-red-50 text-red-600' : p.quantity <= 5 ? 'bg-amber-50 text-amber-600' : 'bg-green-50 text-green-600'
-                        }`}>
-                          {p.quantity} Units
-                        </span>
-                      </td>
-                      <td className="px-8 py-4 text-right">
-                        <div className="flex justify-end gap-2">
-                          <button onClick={() => handleEdit(p)} className="p-2 text-stone-400 hover:text-amber-600 transition-colors"><Icons.Edit /></button>
-                          <button onClick={() => onDelete(p.id)} className="p-2 text-stone-400 hover:text-red-600 transition-colors"><Icons.Trash /></button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'orders' && (
-        <div className="space-y-8">
-          <div className="bg-white p-8 md:p-12 rounded-[2.5rem] border border-stone-200 shadow-xl">
-            <h2 className="text-3xl font-serif font-bold text-stone-800 mb-8">Recent Transactions</h2>
-            <div className="space-y-6">
-              {orders.length === 0 ? (
-                <div className="text-center py-20 text-stone-400 italic">No sales recorded yet.</div>
-              ) : (
-                [...orders].sort((a: Order, b: Order) => b.timestamp - a.timestamp).map((order: Order) => (
-                  <div key={order.id} className="bg-stone-50 rounded-3xl p-6 border border-stone-100 hover:border-amber-200 transition-all">
-                    <div className="flex flex-col md:flex-row justify-between mb-6 gap-4">
-                      <div>
-                        <div className="text-[10px] font-bold text-amber-600 uppercase tracking-[0.2em] mb-1">Order {order.id}</div>
-                        <div className="text-sm font-bold text-stone-800">{order.userEmail}</div>
-                        <div className="text-xs text-stone-400">{new Date(order.timestamp).toLocaleString()}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-2xl font-serif font-bold text-stone-900">₹{order.total.toLocaleString('en-IN')}</div>
-                        <div className="text-[10px] font-bold text-green-600 uppercase">Paid & Synced</div>
-                      </div>
-                    </div>
-                    <div className="border-t border-stone-200/50 pt-4 flex flex-wrap gap-2">
-                      {order.items.map((item: CartItem, idx: number) => (
-                        <div key={idx} className="bg-white px-3 py-1.5 rounded-xl border border-stone-100 text-[10px] font-medium text-stone-600">
-                          {item.cartQuantity}x {item.name}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'reports' && (
-        <div className="space-y-8">
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="bg-stone-900 text-white p-8 rounded-[2.5rem] shadow-xl">
-              <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2">Total Revenue</div>
-              <div className="text-4xl font-serif font-bold">₹{totalRevenue.toLocaleString('en-IN')}</div>
-            </div>
-            <div className="bg-amber-600 text-white p-8 rounded-[2.5rem] shadow-xl">
-              <div className="text-[10px] font-bold text-amber-200 uppercase tracking-widest mb-2">Order Volume</div>
-              <div className="text-4xl font-serif font-bold">{orders.length} <span className="text-lg">Sales</span></div>
-            </div>
-            <div className="bg-white p-8 rounded-[2.5rem] border border-stone-200 shadow-xl">
-              <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2">Average Ticket</div>
-              <div className="text-4xl font-serif font-bold text-stone-900">₹{avgOrderValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
-            </div>
-          </div>
-
-          {/* Category Breakdown */}
-          <div className="bg-white p-8 md:p-12 rounded-[2.5rem] border border-stone-200 shadow-xl">
-            <h3 className="text-xl font-serif font-bold mb-8">Sales by Collection</h3>
-            <div className="space-y-6">
-              {Object.entries(categorySales).length === 0 ? (
-                <div className="text-center py-10 text-stone-400 italic">No category data available.</div>
-              ) : (
-                (Object.entries(categorySales) as [string, number][])
-                  .sort((a: [string, number], b: [string, number]) => b[1] - a[1])
-                  .map(([cat, val]: [string, number]) => (
-                    <div key={cat} className="space-y-2">
-                      <div className="flex justify-between text-xs font-bold uppercase tracking-wider">
-                        <span className="text-stone-800">{cat}</span>
-                        <span className="text-amber-600">₹{val.toLocaleString('en-IN')}</span>
-                      </div>
-                      <div className="h-3 bg-stone-100 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-amber-500 rounded-full transition-all duration-1000" 
-                          style={{ width: `${totalRevenue > 0 ? (val / totalRevenue) * 100 : 0}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))
-              )}
-            </div>
-          </div>
-        </div>
       )}
 
       {activeTab === 'guide' && (
-        <div className="bg-white p-10 md:p-14 rounded-[2.5rem] border border-amber-200 shadow-xl max-w-4xl mx-auto space-y-12">
-          <div className="text-center">
-            <h2 className="text-3xl font-serif font-bold text-stone-800 mb-4">Manual Deployment Guide</h2>
-            <p className="text-stone-500 text-sm">Follow these steps to bypass the GitHub sync loop and go live on Vercel.</p>
+        <div className="bg-white p-10 md:p-14 rounded-[2.5rem] border border-stone-200 shadow-xl max-w-4xl mx-auto space-y-12">
+          <div className="flex justify-between items-start">
+            <div>
+              <h2 className="text-3xl font-serif font-bold text-stone-800 mb-2">Cloud Configuration</h2>
+              <p className="text-stone-400 text-sm">Follow these steps to enable live Role & Inventory sync.</p>
+            </div>
+            <div className="bg-stone-50 px-4 py-2 rounded-full border border-stone-200 text-[10px] font-bold uppercase tracking-widest text-stone-400">
+              Handshake: <span className="text-amber-600">Pending Setup</span>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="p-8 bg-amber-50 rounded-3xl border border-amber-100 space-y-4">
-              <h3 className="font-bold text-amber-800 text-sm uppercase tracking-widest">Step 0: Get your API Key</h3>
-              <p className="text-xs text-amber-700 leading-relaxed">
-                You need a Google Gemini API Key to power the AI features. Get it for free at:
-              </p>
-              <a 
-                href="https://aistudio.google.com/app/apikey" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="inline-block bg-white border border-amber-200 px-4 py-2 rounded-xl text-xs font-bold text-amber-600 hover:bg-amber-100 transition-all"
-              >
-                Get Gemini API Key ↗
-              </a>
+          <div className="space-y-6">
+            <h3 className="text-lg font-serif font-bold text-stone-800">1. Deploy the Backend</h3>
+            <div className="p-6 bg-stone-900 rounded-2xl shadow-inner font-mono text-[11px] overflow-x-auto text-amber-50/80 leading-relaxed">
+              <pre className="whitespace-pre-wrap">{appsScriptCode}</pre>
             </div>
+            <div className="bg-amber-50 p-6 rounded-2xl border border-amber-200 space-y-3">
+              <p className="text-xs text-amber-800 font-bold uppercase">Critical Action Items:</p>
+              <ul className="text-xs text-amber-700 space-y-2 list-decimal list-inside">
+                <li>Copy the code above.</li>
+                <li>Go to your Google Spreadsheet > <b>Extensions > Apps Script</b>.</li>
+                <li>Paste the code and click <b>Deploy > New Deployment</b>.</li>
+                <li>Set Access to <b>"Anyone"</b> (Mandatory).</li>
+                <li>Copy the <b>Web App URL</b> and paste it into <code>services/googleSheetsService.ts</code>.</li>
+              </ul>
+            </div>
+          </div>
 
-            <div className="p-8 bg-stone-50 rounded-3xl border border-stone-200 space-y-4">
-              <h3 className="font-bold text-stone-800 text-sm uppercase tracking-widest">Step 1: Download Project</h3>
-              <p className="text-xs text-stone-500 leading-relaxed">
-                Click the <strong>Download icon</strong> (Cloud with down arrow) in the top-right toolbar of the AI Studio window. Unzip this on your computer.
-              </p>
-            </div>
-
-            <div className="p-8 bg-stone-50 rounded-3xl border border-stone-200 space-y-4">
-              <h3 className="font-bold text-stone-800 text-sm uppercase tracking-widest">Step 2: Upload to GitHub</h3>
-              <p className="text-xs text-stone-500 leading-relaxed">
-                Create a new repository on GitHub. Use the "uploading an existing file" link to drag and drop all your unzipped files.
-              </p>
-            </div>
-
-            <div className="p-8 bg-stone-900 rounded-3xl space-y-4 text-white">
-              <h3 className="font-bold text-amber-500 text-sm uppercase tracking-widest">Step 3: Deploy to Vercel</h3>
-              <p className="text-xs text-stone-400 leading-relaxed">
-                Connect your GitHub to Vercel. When importing the project, add <code>API_KEY</code> as an Environment Variable and paste your key.
-              </p>
-            </div>
+          <div className="pt-10 border-t border-stone-100">
+             <h3 className="text-lg font-serif font-bold text-stone-800 mb-4">2. Finalize & Sync</h3>
+             <p className="text-sm text-stone-600 mb-6">Once you have updated the code and pushed to GitHub, your app will automatically fetch the latest roles from your Spreadsheet every time a user logs in.</p>
+             <button 
+               onClick={() => window.open('https://vercel.com/dashboard', '_blank')}
+               className="bg-stone-900 text-white px-8 py-4 rounded-xl font-bold hover:bg-amber-600 transition-all text-sm"
+             >
+               Verify Build on Vercel
+             </button>
           </div>
         </div>
       )}
