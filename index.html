@@ -8,49 +8,77 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
-    <style>
-      body {
-        font-family: 'Inter', sans-serif;
-        margin: 0;
-        padding: 0;
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              serif: ['Playfair Display', 'serif'],
+            },
+            colors: {
+              stone: {
+                50: '#fdfcfb',
+                100: '#f3f2f0',
+                200: '#e7e5e1',
+                300: '#d6d3d1',
+                400: '#a8a29e',
+                500: '#78716c',
+                700: '#44403c',
+                800: '#292524',
+                900: '#1c1917',
+              },
+              amber: {
+                50: '#fffbeb',
+                100: '#fef3c7',
+                200: '#fde68a',
+                500: '#f59e0b',
+                600: '#d97706',
+                700: '#b45309',
+              },
+            },
+            animation: {
+              'marquee': 'marquee 25s linear infinite',
+              'fade-in': 'fade-in 0.6s ease-out forwards',
+              'zoom-in': 'zoom-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+              'slide-in-bottom': 'slide-in-bottom 0.6s ease-out forwards',
+            },
+            keyframes: {
+              marquee: {
+                '0%': { transform: 'translateX(100%)' },
+                '100%': { transform: 'translateX(-100%)' },
+              },
+              'fade-in': {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              'zoom-in': {
+                '0%': { transform: 'scale(0.95)', opacity: '0' },
+                '100%': { transform: 'scale(1)', opacity: '1' },
+              },
+              'slide-in-bottom': {
+                '0%': { transform: 'translateY(20px)', opacity: '0' },
+                '100%': { transform: 'translateY(0)', opacity: '1' },
+              },
+            },
+          },
+        },
       }
-      .font-serif {
-        font-family: 'Playfair Display', serif;
+    </script>
+    <style type="text/tailwindcss">
+      @layer base {
+        body {
+          @apply bg-stone-50 text-stone-900 antialiased overflow-x-hidden;
+        }
       }
-      
-      /* Animation Keyframes */
-      @keyframes marquee {
-        0% { transform: translateX(100%); }
-        100% { transform: translateX(-100%); }
+      @layer utilities {
+        .animate-in {
+          animation-fill-mode: both;
+        }
       }
-      .animate-marquee {
-        animation: marquee 20s linear infinite;
-      }
-
-      @keyframes fade-in {
-        from { opacity: 0; }
-        to { opacity: 1; }
-      }
-      @keyframes zoom-in {
-        from { transform: scale(0.95); opacity: 0; }
-        to { transform: scale(1); opacity: 1; }
-      }
-      @keyframes slide-in-bottom {
-        from { transform: translateY(20px); opacity: 0; }
-        to { transform: translateY(0); opacity: 1; }
-      }
-
-      .animate-in {
-        animation-duration: 500ms;
-        animation-fill-mode: both;
-        animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-      }
-      .fade-in { animation-name: fade-in; }
-      .zoom-in { animation-name: zoom-in; }
-      .slide-in-from-bottom-8 { animation-name: slide-in-bottom; }
     </style>
     <script>
-      // Shim process.env for libraries that expect it
       window.process = {
         env: {
           API_KEY: "" 
@@ -70,7 +98,7 @@
 }
 </script>
 </head>
-  <body class="bg-stone-50 text-stone-900 overflow-x-hidden">
+  <body>
     <div id="root"></div>
     <script type="module" src="./index.tsx"></script>
   </body>
