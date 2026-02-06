@@ -1,4 +1,4 @@
-# 💍 Aura Jewelry Mart
+# 💍 Aura Jewelry Boutique
 
 A high-end, professional e-commerce platform for boutique jewelry businesses. 
 
