@@ -3,16 +3,17 @@
  * GOOGLE SHEETS & DRIVE INTEGRATION SERVICE
  */
 
-// NOTE: This URL is a placeholder. You must replace it with your own Deployed Google Apps Script Web App URL.
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbygRcPeoMCGgfuqAAwE_5vo52AuSD2t2kaD-ln8JlI7eHc5v-X5ajIbyg2ol10Awo2g/exec'; 
+// STEP 1: Replace this URL with your actual "Web App URL" from the Google Apps Script "Deploy" menu.
+// The URL should look like: https://script.google.com/macros/s/ABC_YOUR_ID_XYZ/exec
+const SCRIPT_URL = 'REPLACE_WITH_YOUR_DEPLOYED_WEB_APP_URL'; 
 
 /**
- * Helper to determine if the script URL is still the placeholder.
+ * Helper to determine if the script URL has been updated by the user.
  */
 const isConfigured = () => {
   return SCRIPT_URL && 
-         !SCRIPT_URL.includes('YOUR_DEPLOYED_SCRIPT_ID') && 
-         !SCRIPT_URL.includes('AKfycbygRcPeoMCGgfuqAAwE_5vo52AuSD2t2kaD-ln8JlI7eHc5v-X5ajIbyg2ol10Awo2g');
+         SCRIPT_URL.startsWith('https://script.google.com') && 
+         !SCRIPT_URL.includes('REPLACE_WITH_YOUR');
 };
 
 /**
@@ -20,22 +21,25 @@ const isConfigured = () => {
  */
 export const syncToSheets = async (action: 'user' | 'product' | 'order' | 'special_request' | 'community_post' | 'message', data: any) => {
   if (!isConfigured()) {
-    console.log(`[Aura Dev] Simulation: ${action} logic executed locally.`);
+    console.warn(`[Aura Registry] SIMULATION MODE: Action "${action}" was NOT sent to Google Sheets.`);
+    console.info(`Reason: SCRIPT_URL in googleSheetsService.ts is still set to placeholder.`);
     return true;
   }
 
   try {
-    // We use 'no-cors' only if the endpoint doesn't support preflight, 
-    // but for Apps Script, POST with body often works best with regular fetch if handled carefully.
+    console.log(`[Aura Registry] Syncing ${action} to cloud...`);
+    // We use 'no-cors' for Google Apps Script to bypass CORS preflight issues 
+    // caused by the script's redirect behavior.
     await fetch(SCRIPT_URL, {
       method: 'POST',
-      mode: 'no-cors', // Standard for Apps Script redirects
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Avoids preflight
+      mode: 'no-cors', 
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action, data })
     });
+    console.log(`[Aura Registry] ${action} sync request dispatched.`);
     return true;
   } catch (error) {
-    console.error("Sync to Sheets failed:", error);
+    console.error(`[Aura Registry] Sync to Sheets failed for ${action}:`, error);
     return false;
   }
 };
@@ -45,8 +49,8 @@ export const syncToSheets = async (action: 'user' | 'product' | 'order' | 'speci
  */
 export const uploadImageToDrive = async (base64Data: string, fileName: string) => {
   if (!isConfigured()) {
-    console.log("[Aura Dev] Simulation: Image processed locally.");
-    return "https://images.unsplash.com/photo-1515562141207-7a88fb7ce338"; // Mock URL
+    console.warn("[Aura Drive] SIMULATION MODE: Image upload skipped. Using mock URL.");
+    return "https://images.unsplash.com/photo-1515562141207-7a88fb7ce338"; 
   }
 
   try {
@@ -64,15 +68,13 @@ export const uploadImageToDrive = async (base64Data: string, fileName: string) =
     const result = await response.json();
     return result.url;
   } catch (error) {
-    console.error("Drive upload failed:", error);
+    console.error("[Aura Drive] Drive upload failed:", error);
     return null;
   }
 };
 
 export const getUserRole = async (email: string): Promise<'ADMIN' | 'USER' | null> => {
-  if (!isConfigured()) {
-    return email.toLowerCase().includes('admin') ? 'ADMIN' : 'USER';
-  }
+  if (!isConfigured()) return null;
 
   try {
     const response = await fetch(`${SCRIPT_URL}?action=getRole&email=${encodeURIComponent(email)}`);
@@ -80,7 +82,6 @@ export const getUserRole = async (email: string): Promise<'ADMIN' | 'USER' | nul
     const result = await response.json();
     return result.role;
   } catch (error) {
-    console.warn("Failed to fetch role from server.");
     return null;
   }
 };
@@ -94,16 +95,15 @@ export const getProducts = async (): Promise<any[] | null> => {
     const result = await response.json();
     return result.products || null;
   } catch (error) {
-    console.warn("Server products unavailable. Loading local catalog.");
     return null;
   }
 };
 
 export const getAllUsers = async (): Promise<any[]> => {
   if (!isConfigured()) {
+    // Return empty or mock data if not configured
     return [
-      { email: 'admin@aura.com', role: 'ADMIN', timestamp: Date.now() },
-      { email: 'customer@aura.com', role: 'USER', timestamp: Date.now() - 3600000 }
+      { email: 'SYSTEM_MOCK_ADMIN@aura.com', role: 'ADMIN', timestamp: Date.now() }
     ];
   }
 
@@ -113,6 +113,7 @@ export const getAllUsers = async (): Promise<any[]> => {
     const result = await response.json();
     return result.users || [];
   } catch (error) {
+    console.error("[Aura Registry] Failed to fetch user registry:", error);
     return [];
   }
 };
