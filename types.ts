@@ -15,6 +15,8 @@ export interface Product {
   price: number;
   quantity: number;
   imageUrl: string;
+  additionalImages?: string[];
+  videoUrl?: string;
   status: 'In Stock' | 'Limited' | 'Out of Stock';
 }
 
