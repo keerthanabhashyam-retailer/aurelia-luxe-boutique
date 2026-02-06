@@ -10,6 +10,10 @@ import { Product, UserRole, CartItem, Order } from './types';
 import { INITIAL_PRODUCTS } from './services/mockData';
 import { syncToSheets, getUserRole, getProducts } from './services/googleSheetsService';
 
+// Rule: Admins should use a key that is difficult to guess.
+// Default key for development: AURA2024
+const STAFF_ACCESS_KEY = (process.env as any).STAFF_KEY || 'AURA2024';
+
 const App: React.FC = () => {
   const [role, setRole] = useState<UserRole | null>(null);
   const [userEmail, setUserEmail] = useState('');
@@ -30,12 +34,10 @@ const App: React.FC = () => {
     const loadData = async () => {
       setIsSyncing(true);
       try {
-        // Try to get live products from Spreadsheet
         const liveProducts = await getProducts();
         if (liveProducts && liveProducts.length > 0) {
           setProducts(liveProducts);
         } else {
-          // Fallback to local storage if it exists, otherwise we keep INITIAL_PRODUCTS
           const savedProducts = localStorage.getItem('aura_products');
           if (savedProducts) {
             const parsed = JSON.parse(savedProducts);
@@ -69,13 +71,21 @@ const App: React.FC = () => {
         if (remoteRole) {
           setRole(remoteRole as UserRole);
         } else {
+          // Fallback logic for demo/offline
           const detectedRole = userEmail.toLowerCase().includes('admin') ? UserRole.ADMIN : UserRole.USER;
           setRole(detectedRole);
         }
       } else {
-        if (signupRole === UserRole.ADMIN && adminKey !== 'AURA2024') {
-          return alert("Invalid Staff Access Key.");
+        // Validation for Admin Signup
+        if (signupRole === UserRole.ADMIN) {
+            if (!adminKey) {
+                return alert("Staff Access Key is required for Administrator accounts.");
+            }
+            if (adminKey !== STAFF_ACCESS_KEY) {
+                return alert("Unauthorized: The Staff Access Key provided is incorrect. Please contact the Store Owner.");
+            }
         }
+        
         await syncToSheets('user', { email: userEmail, role: signupRole, timestamp: Date.now() });
         setRole(signupRole);
       }
@@ -116,7 +126,7 @@ const App: React.FC = () => {
       setCart([]);
       localStorage.removeItem('aura_cart');
       setIsCartOpen(false);
-      alert(`Order ${newOrder.id} placed.`);
+      alert(`Order ${newOrder.id} placed successfully.`);
     } finally {
       setIsSyncing(false);
     }
@@ -139,7 +149,7 @@ const App: React.FC = () => {
             <div className="absolute top-0 right-0 w-32 h-32 bg-amber-600/20 blur-3xl -mr-16 -mt-16"></div>
             <div className="w-16 h-16 bg-amber-600 rounded-full flex items-center justify-center text-white font-serif text-3xl font-bold mx-auto mb-4">A</div>
             <h1 className="text-3xl font-serif font-bold tracking-tight mb-1">Aura Jewelry Mart</h1>
-            <p className="text-stone-400 text-sm">Luxury defined by you.</p>
+            <p className="text-stone-400 text-sm italic">Luxury defined by you.</p>
           </div>
           <div className="p-8 space-y-6">
             <div className="flex bg-stone-100 p-1 rounded-xl">
@@ -152,28 +162,39 @@ const App: React.FC = () => {
                   <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Account Role</label>
                   <div className="grid grid-cols-2 gap-2">
                     <button onClick={() => setSignupRole(UserRole.USER)} className={`py-2 text-[10px] font-bold uppercase border rounded-xl transition-all ${signupRole === UserRole.USER ? 'bg-amber-50 border-amber-600 text-amber-700' : 'bg-white border-stone-200 text-stone-400'}`}>Customer</button>
-                    <button onClick={() => setSignupRole(UserRole.ADMIN)} className={`py-2 text-[10px] font-bold uppercase border rounded-xl transition-all ${signupRole === UserRole.ADMIN ? 'bg-amber-50 border-amber-600 text-amber-700' : 'bg-white border-stone-200 text-stone-400'}`}>Administrator</button>
+                    <button onClick={() => setSignupRole(UserRole.ADMIN)} className={`py-2 text-[10px] font-bold uppercase border rounded-xl transition-all ${signupRole === UserRole.ADMIN ? 'bg-amber-50 border-amber-600 text-amber-700' : 'bg-white border-stone-200 text-stone-400'}`}>Staff Member</button>
                   </div>
                 </div>
               )}
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Email Address</label>
-                <input value={userEmail} onChange={e => setUserEmail(e.target.value)} type="email" placeholder="concierge@aura.com" className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" />
+                <input value={userEmail} onChange={e => setUserEmail(e.target.value)} type="email" placeholder="concierge@aura.com" className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none transition-shadow" />
               </div>
               {authMode === 'signup' && signupRole === UserRole.ADMIN && (
                 <div className="space-y-2 animate-in slide-in-from-top-2">
-                  <label className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Staff Access Key</label>
-                  <input type="password" value={adminKey} onChange={e => setAdminKey(e.target.value)} placeholder="Enter Staff Key" className="w-full p-3 bg-amber-50 border border-amber-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none text-amber-900" />
+                  <label className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Master Access Key</label>
+                  <input 
+                    type="password" 
+                    value={adminKey} 
+                    onChange={e => setAdminKey(e.target.value)} 
+                    placeholder="Requires Store Authorization" 
+                    className="w-full p-3 bg-amber-50 border border-amber-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none text-amber-900 font-mono tracking-widest" 
+                  />
+                  <p className="text-[9px] text-amber-600 leading-tight italic px-1">This key is generated by the store owner to prevent unauthorized administrative access.</p>
                 </div>
               )}
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Password</label>
+                <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Security Password</label>
                 <input type="password" placeholder="••••••••" className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" />
               </div>
             </div>
-            <button onClick={handleAuth} disabled={isSyncing} className="w-full bg-stone-900 text-white py-4 rounded-xl font-bold hover:bg-stone-800 transition-all flex items-center justify-center gap-2">
+            <button 
+              onClick={handleAuth} 
+              disabled={isSyncing} 
+              className="w-full bg-stone-900 text-white py-4 rounded-xl font-bold hover:bg-amber-600 transition-all flex items-center justify-center gap-2 shadow-lg active:scale-[0.98]"
+            >
               {isSyncing && <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />}
-              {isSyncing ? 'Verifying...' : authMode === 'login' ? 'Enter Boutique' : 'Create Account'}
+              {isSyncing ? 'Synchronizing...' : authMode === 'login' ? 'Enter Boutique' : 'Authorize Account'}
             </button>
           </div>
         </div>
@@ -195,7 +216,7 @@ const App: React.FC = () => {
       {isSyncing && (
         <div className="fixed top-4 right-4 bg-amber-600 text-white px-4 py-2 rounded-full shadow-lg z-[60] text-xs font-bold animate-pulse flex items-center gap-2">
           <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-          Synchronizing...
+          Synchronizing Registry...
         </div>
       )}
 
@@ -241,24 +262,38 @@ const App: React.FC = () => {
           <div className="relative bg-white h-full md:h-auto md:max-h-[85vh] w-full max-w-md md:rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-right duration-300">
             <div className="p-8 border-b border-stone-100 flex justify-between items-center bg-stone-50/50">
               <h3 className="text-2xl font-serif font-bold">Your Bag</h3>
-              <button onClick={() => setIsCartOpen(false)}>✕</button>
+              <button onClick={() => setIsCartOpen(false)} className="p-2 hover:bg-stone-100 rounded-full transition-colors">✕</button>
             </div>
             <div className="flex-1 overflow-y-auto p-8 space-y-6">
               {cart.map(item => (
-                <div key={item.id} className="flex justify-between items-center bg-stone-50 p-4 rounded-2xl">
-                  <div>
-                    <div className="font-bold text-sm">{item.name}</div>
-                    <div className="text-[10px] text-stone-400 uppercase">{item.category}</div>
+                <div key={item.id} className="flex justify-between items-center bg-stone-50 p-4 rounded-2xl border border-stone-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-lg overflow-hidden bg-stone-200">
+                      <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-sm line-clamp-1">{item.name}</div>
+                      <div className="text-[10px] text-stone-400 uppercase tracking-widest">{item.category}</div>
+                    </div>
                   </div>
-                  <div className="font-bold">₹{item.price.toLocaleString('en-IN')}</div>
+                  <div className="font-bold text-stone-900">₹{item.price.toLocaleString('en-IN')}</div>
                 </div>
               ))}
-              {cart.length === 0 && <p className="text-center text-stone-400">Empty bag</p>}
+              {cart.length === 0 && (
+                <div className="text-center py-20">
+                  <p className="text-stone-400 italic">Your bag is empty.</p>
+                  <button onClick={() => setIsCartOpen(false)} className="text-amber-600 font-bold text-xs uppercase mt-4 underline">Continue Shopping</button>
+                </div>
+              )}
             </div>
             {cart.length > 0 && (
-              <div className="p-8 border-t border-stone-100">
-                <button onClick={handleCheckout} className="w-full bg-stone-900 text-white py-5 rounded-2xl font-bold hover:bg-amber-600 transition-all">
-                  Confirm & Sync (Total: ₹{cart.reduce((sum, i) => sum + (i.price * i.cartQuantity), 0).toLocaleString('en-IN')})
+              <div className="p-8 border-t border-stone-100 bg-stone-50/50">
+                <div className="flex justify-between items-center mb-6">
+                  <span className="text-sm font-bold text-stone-400 uppercase tracking-widest">Total Amount</span>
+                  <span className="text-2xl font-serif font-bold text-stone-900">₹{cart.reduce((sum, i) => sum + (i.price * i.cartQuantity), 0).toLocaleString('en-IN')}</span>
+                </div>
+                <button onClick={handleCheckout} className="w-full bg-stone-900 text-white py-5 rounded-2xl font-bold hover:bg-amber-600 transition-all shadow-xl">
+                  Finalize Purchase
                 </button>
               </div>
             )}
