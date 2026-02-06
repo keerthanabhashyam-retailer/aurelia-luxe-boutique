@@ -176,7 +176,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, orders, onAdd
               {orders.length === 0 ? (
                 <div className="text-center py-20 text-stone-400 italic">No sales recorded yet.</div>
               ) : (
-                orders.sort((a,b) => b.timestamp - a.timestamp).map((order: Order) => (
+                [...orders].sort((a: Order, b: Order) => b.timestamp - a.timestamp).map((order: Order) => (
                   <div key={order.id} className="bg-stone-50 rounded-3xl p-6 border border-stone-100 hover:border-amber-200 transition-all">
                     <div className="flex flex-col md:flex-row justify-between mb-6 gap-4">
                       <div>
@@ -229,7 +229,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, orders, onAdd
               {Object.entries(categorySales).length === 0 ? (
                 <div className="text-center py-10 text-stone-400 italic">No category data available.</div>
               ) : (
-                Object.entries(categorySales)
+                (Object.entries(categorySales) as [string, number][])
                   .sort((a: [string, number], b: [string, number]) => b[1] - a[1])
                   .map(([cat, val]: [string, number]) => (
                     <div key={cat} className="space-y-2">
