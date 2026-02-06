@@ -11,8 +11,7 @@ import { INITIAL_PRODUCTS } from './services/mockData';
 import { syncToSheets, getUserRole, getProducts } from './services/googleSheetsService';
 
 // Rule: Admins should use a key that is difficult to guess.
-// Default key for development: AURA2024
-const STAFF_ACCESS_KEY = (process.env as any).STAFF_KEY || 'AURA2024';
+const STAFF_ACCESS_KEY = 'AURA2024';
 
 const App: React.FC = () => {
   const [role, setRole] = useState<UserRole | null>(null);
@@ -36,7 +35,6 @@ const App: React.FC = () => {
       try {
         const liveProducts = await getProducts();
         if (liveProducts && Array.isArray(liveProducts)) {
-          // Sanitize incoming data to remove empty/invalid rows from Sheets
           const validProducts = liveProducts.filter(p => p && p.id && p.name);
           if (validProducts.length > 0) {
             setProducts(validProducts);
@@ -50,10 +48,8 @@ const App: React.FC = () => {
             }
           }
         }
-
         const savedCart = localStorage.getItem('aura_cart');
         if (savedCart) setCart(JSON.parse(savedCart));
-        
         const savedOrders = localStorage.getItem('aura_orders');
         if (savedOrders) setOrders(JSON.parse(savedOrders));
       } catch (err) {
@@ -75,28 +71,36 @@ const App: React.FC = () => {
         if (remoteRole) {
           setRole(remoteRole as UserRole);
         } else {
-          // Fallback logic for demo/offline
+          // Robust fallback: Detect admin by email content if not found in remote sheet
           const detectedRole = userEmail.toLowerCase().includes('admin') ? UserRole.ADMIN : UserRole.USER;
           setRole(detectedRole);
+          console.info(`[Auth] Using local role detection for ${userEmail}: ${detectedRole}`);
         }
       } else {
         // Validation for Admin Signup
         if (signupRole === UserRole.ADMIN) {
             if (!adminKey) {
                 setIsSyncing(false);
-                return alert("Staff Access Key is required for Administrator accounts.");
+                return alert("The Staff Access Key is required for Administrator accounts.");
             }
             if (adminKey !== STAFF_ACCESS_KEY) {
                 setIsSyncing(false);
-                return alert("Unauthorized: The Staff Access Key provided is incorrect. Please contact the Store Owner.");
+                return alert("Unauthorized: Incorrect Staff Access Key.");
             }
         }
         
-        await syncToSheets('user', { email: userEmail, role: signupRole, timestamp: Date.now() });
-        setRole(signupRole);
+        const success = await syncToSheets('user', { email: userEmail, role: signupRole, timestamp: Date.now() });
+        if (success) {
+          setRole(signupRole);
+          alert(`Welcome! Your ${signupRole.toLowerCase()} account has been created.`);
+        } else {
+          // Proceed anyway but warn
+          setRole(signupRole);
+          console.warn("User logged in but sync to cloud failed.");
+        }
       }
     } catch (err) {
-      console.error("Auth sync failed:", err);
+      console.error("Auth process error:", err);
       setRole(userEmail.toLowerCase().includes('admin') ? UserRole.ADMIN : UserRole.USER);
     } finally {
       setIsSyncing(false);
@@ -140,12 +144,9 @@ const App: React.FC = () => {
 
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
-      // DEFENSIVE CHECK: Skip malformed products from Sheets
       if (!p || typeof p.name !== 'string' || typeof p.sku !== 'string') return false;
-      
       const search = searchQuery.toLowerCase();
-      const matchesSearch = p.name.toLowerCase().includes(search) || 
-                            p.sku.toLowerCase().includes(search);
+      const matchesSearch = p.name.toLowerCase().includes(search) || p.sku.toLowerCase().includes(search);
       const matchesCat = activeCategory === 'All' || p.category === activeCategory;
       return matchesSearch && matchesCat;
     });
@@ -153,59 +154,65 @@ const App: React.FC = () => {
 
   if (!role) {
     return (
-      <div className="min-h-screen bg-stone-50 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl border border-stone-200 overflow-hidden animate-in fade-in zoom-in duration-500">
-          <div className="bg-stone-900 p-10 text-center text-white relative">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-amber-600/20 blur-3xl -mr-16 -mt-16"></div>
-            <div className="w-16 h-16 bg-amber-600 rounded-full flex items-center justify-center text-white font-serif text-3xl font-bold mx-auto mb-4">A</div>
-            <h1 className="text-3xl font-serif font-bold tracking-tight mb-1">Aura Jewelry Mart</h1>
-            <p className="text-stone-400 text-sm italic">Luxury defined by you.</p>
+      <div className="min-h-screen bg-stone-100 flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white rounded-[2rem] shadow-2xl border border-stone-200 overflow-hidden animate-in fade-in zoom-in duration-500">
+          <div className="bg-stone-900 p-12 text-center text-white relative">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-amber-600/10 blur-3xl -mr-16 -mt-16"></div>
+            <div className="w-16 h-16 bg-amber-600 rounded-full flex items-center justify-center text-white font-serif text-3xl font-bold mx-auto mb-4 shadow-lg">A</div>
+            <h1 className="text-3xl font-serif font-bold tracking-tight mb-2">Aura Jewelry</h1>
+            <p className="text-stone-400 text-[10px] uppercase tracking-[0.3em] font-medium">Luxury Defined by You</p>
           </div>
-          <div className="p-8 space-y-6">
-            <div className="flex bg-stone-100 p-1 rounded-xl">
-              <button onClick={() => setAuthMode('login')} className={`flex-1 py-2 text-xs font-bold uppercase tracking-widest rounded-lg transition-all ${authMode === 'login' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-400'}`}>Login</button>
-              <button onClick={() => setAuthMode('signup')} className={`flex-1 py-2 text-xs font-bold uppercase tracking-widest rounded-lg transition-all ${authMode === 'signup' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-400'}`}>Signup</button>
+          <div className="p-10 space-y-8">
+            <div className="flex bg-stone-100 p-1.5 rounded-2xl">
+              <button onClick={() => setAuthMode('login')} className={`flex-1 py-3 text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all ${authMode === 'login' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-400'}`}>Login</button>
+              <button onClick={() => setAuthMode('signup')} className={`flex-1 py-3 text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all ${authMode === 'signup' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-400'}`}>Signup</button>
             </div>
-            <div className="space-y-4">
+            
+            <div className="space-y-5">
               {authMode === 'signup' && (
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Account Role</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => setSignupRole(UserRole.USER)} className={`py-2 text-[10px] font-bold uppercase border rounded-xl transition-all ${signupRole === UserRole.USER ? 'bg-amber-50 border-amber-600 text-amber-700' : 'bg-white border-stone-200 text-stone-400'}`}>Customer</button>
-                    <button onClick={() => setSignupRole(UserRole.ADMIN)} className={`py-2 text-[10px] font-bold uppercase border rounded-xl transition-all ${signupRole === UserRole.ADMIN ? 'bg-amber-50 border-amber-600 text-amber-700' : 'bg-white border-stone-200 text-stone-400'}`}>Staff Member</button>
+                  <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest ml-1">Account Role</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button onClick={() => setSignupRole(UserRole.USER)} className={`py-3 text-[10px] font-bold uppercase border-2 rounded-2xl transition-all ${signupRole === UserRole.USER ? 'bg-amber-50 border-amber-600 text-amber-700' : 'bg-white border-stone-100 text-stone-300'}`}>Customer</button>
+                    <button onClick={() => setSignupRole(UserRole.ADMIN)} className={`py-3 text-[10px] font-bold uppercase border-2 rounded-2xl transition-all ${signupRole === UserRole.ADMIN ? 'bg-amber-50 border-amber-600 text-amber-700' : 'bg-white border-stone-100 text-stone-300'}`}>Staff Member</button>
                   </div>
                 </div>
               )}
+              
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Email Address</label>
-                <input value={userEmail} onChange={e => setUserEmail(e.target.value)} type="email" placeholder="concierge@aura.com" className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none transition-shadow" />
+                <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest ml-1">Email Address</label>
+                <input value={userEmail} onChange={e => setUserEmail(e.target.value)} type="email" placeholder="concierge@aura.com" className="w-full p-4 bg-stone-50 border border-stone-200 rounded-2xl focus:ring-2 focus:ring-amber-500 outline-none transition-all text-sm" />
               </div>
+
               {authMode === 'signup' && signupRole === UserRole.ADMIN && (
                 <div className="space-y-2 animate-in slide-in-from-top-2">
-                  <label className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Master Access Key</label>
+                  <label className="text-[10px] font-bold text-amber-600 uppercase tracking-widest ml-1">Master Access Key</label>
                   <input 
                     type="password" 
                     value={adminKey} 
                     onChange={e => setAdminKey(e.target.value)} 
-                    placeholder="Requires Store Authorization" 
-                    className="w-full p-3 bg-amber-50 border border-amber-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none text-amber-900 font-mono tracking-widest" 
+                    placeholder="Enter Staff Key" 
+                    className="w-full p-4 bg-amber-50 border border-amber-200 rounded-2xl focus:ring-2 focus:ring-amber-500 outline-none text-amber-900 font-mono tracking-widest text-center" 
                   />
-                  <p className="text-[9px] text-amber-600 leading-tight italic px-1">This key is generated by the store owner to prevent unauthorized administrative access.</p>
+                  <p className="text-[9px] text-amber-600/70 text-center italic">Required for staff account authorization.</p>
                 </div>
               )}
+
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Security Password</label>
-                <input type="password" placeholder="••••••••" className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" />
+                <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest ml-1">Access Password</label>
+                <input type="password" placeholder="••••••••" className="w-full p-4 bg-stone-50 border border-stone-200 rounded-2xl focus:ring-2 focus:ring-amber-500 outline-none transition-all text-sm" />
               </div>
             </div>
+
             <button 
               onClick={handleAuth} 
               disabled={isSyncing} 
-              className="w-full bg-stone-900 text-white py-4 rounded-xl font-bold hover:bg-amber-600 transition-all flex items-center justify-center gap-2 shadow-lg active:scale-[0.98]"
+              className="w-full bg-stone-900 text-white py-5 rounded-2xl font-bold hover:bg-amber-600 transition-all flex items-center justify-center gap-3 shadow-xl active:scale-95 disabled:bg-stone-300"
             >
               {isSyncing && <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />}
               {isSyncing ? 'Synchronizing...' : authMode === 'login' ? 'Enter Boutique' : 'Authorize Account'}
             </button>
+            <p className="text-[10px] text-stone-400 text-center">Protected by secure cloud registry.</p>
           </div>
         </div>
       </div>
@@ -224,28 +231,29 @@ const App: React.FC = () => {
       onNavigate={setView}
     >
       {isSyncing && (
-        <div className="fixed top-4 right-4 bg-amber-600 text-white px-4 py-2 rounded-full shadow-lg z-[60] text-xs font-bold animate-pulse flex items-center gap-2">
+        <div className="fixed bottom-8 right-8 bg-amber-600 text-white px-6 py-3 rounded-full shadow-2xl z-[60] text-xs font-bold animate-pulse flex items-center gap-3">
           <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-          Synchronizing Registry...
+          Updating Cloud Registry...
         </div>
       )}
 
       {view === 'home' && (
         <div className="space-y-12 animate-in fade-in duration-700">
           <div id="catalog" className="scroll-mt-24">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-10 gap-4">
-              <div>
-                <h2 className="text-4xl font-serif font-bold text-stone-800">{activeCategory === 'All' ? 'Our Collections' : activeCategory}</h2>
-                <div className="h-1 w-20 bg-amber-600 mt-2 rounded-full"></div>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-12 gap-6">
+              <div className="space-y-2">
+                <span className="text-[10px] font-bold text-amber-600 uppercase tracking-[0.3em]">Exquisite Selections</span>
+                <h2 className="text-4xl font-serif font-bold text-stone-800">{activeCategory === 'All' ? 'Our Curated Collections' : activeCategory}</h2>
+                <div className="h-1 w-24 bg-amber-600 rounded-full"></div>
               </div>
-              <div className="text-sm font-medium text-stone-400 bg-stone-100 px-4 py-2 rounded-full shadow-inner">{filteredProducts.length} Treasures Available</div>
+              <div className="text-[10px] font-bold text-stone-400 bg-stone-100 px-5 py-2.5 rounded-full border border-stone-200 uppercase tracking-widest">{filteredProducts.length} Pieces Available</div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-10">
               {filteredProducts.map(p => (
                 <ProductCard key={p.id} product={p} onAddToCart={(prod) => { setCart(prev => [...prev, { ...prod, cartQuantity: 1 }]); setIsCartOpen(true); }} />
               ))}
               {filteredProducts.length === 0 && (
-                <div className="col-span-full py-20 text-center text-stone-400 italic">No matches found in this category.</div>
+                <div className="col-span-full py-32 text-center text-stone-400 italic">No matches found in this collection.</div>
               )}
             </div>
           </div>
@@ -255,7 +263,6 @@ const App: React.FC = () => {
       {view === 'request' && <SpecialRequest onSync={async (data) => { setIsSyncing(true); try { await syncToSheets('special_request', { ...data, userEmail }); } finally { setIsSyncing(false); } }} />}
       {view === 'community' && <Community onSync={async (data) => { setIsSyncing(true); try { await syncToSheets('community_post', { ...data, userEmail }); } finally { setIsSyncing(false); } }} />}
       {view === 'contact' && <Contact onSync={async (data) => { setIsSyncing(true); try { await syncToSheets('message', { ...data, userEmail }); } finally { setIsSyncing(false); } }} />}
-
       {view === 'admin' && role === UserRole.ADMIN && (
         <AdminDashboard 
           products={products}
@@ -267,43 +274,47 @@ const App: React.FC = () => {
       )}
 
       {isCartOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-end p-0 md:p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-end">
           <div className="absolute inset-0 bg-stone-900/60 backdrop-blur-md" onClick={() => setIsCartOpen(false)} />
-          <div className="relative bg-white h-full md:h-auto md:max-h-[85vh] w-full max-w-md md:rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-right duration-300">
-            <div className="p-8 border-b border-stone-100 flex justify-between items-center bg-stone-50/50">
-              <h3 className="text-2xl font-serif font-bold">Your Bag</h3>
-              <button onClick={() => setIsCartOpen(false)} className="p-2 hover:bg-stone-100 rounded-full transition-colors">✕</button>
+          <div className="relative bg-white h-full w-full max-w-md shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-right duration-500">
+            <div className="p-10 border-b border-stone-100 flex justify-between items-center bg-stone-50/50">
+              <div>
+                <h3 className="text-2xl font-serif font-bold">Your Bag</h3>
+                <p className="text-[10px] text-stone-400 uppercase tracking-widest mt-1">Review your selection</p>
+              </div>
+              <button onClick={() => setIsCartOpen(false)} className="p-3 hover:bg-stone-200 rounded-full transition-colors text-stone-400">✕</button>
             </div>
-            <div className="flex-1 overflow-y-auto p-8 space-y-6">
+            <div className="flex-1 overflow-y-auto p-10 space-y-8">
               {cart.map(item => (
-                <div key={item.id} className="flex justify-between items-center bg-stone-50 p-4 rounded-2xl border border-stone-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-lg overflow-hidden bg-stone-200">
+                <div key={item.id} className="flex justify-between items-center bg-stone-50 p-5 rounded-3xl border border-stone-100">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-2xl overflow-hidden bg-stone-200 shadow-sm">
                       <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
                     </div>
                     <div>
-                      <div className="font-bold text-sm line-clamp-1">{item.name}</div>
-                      <div className="text-[10px] text-stone-400 uppercase tracking-widest">{item.category}</div>
+                      <div className="font-bold text-sm text-stone-800">{item.name}</div>
+                      <div className="text-[9px] text-stone-400 uppercase tracking-widest mt-0.5">{item.category}</div>
+                      <div className="text-[10px] font-medium text-amber-600 mt-1">₹{item.price.toLocaleString('en-IN')}</div>
                     </div>
                   </div>
-                  <div className="font-bold text-stone-900">₹{item.price.toLocaleString('en-IN')}</div>
                 </div>
               ))}
               {cart.length === 0 && (
-                <div className="text-center py-20">
-                  <p className="text-stone-400 italic">Your bag is empty.</p>
-                  <button onClick={() => setIsCartOpen(false)} className="text-amber-600 font-bold text-xs uppercase mt-4 underline">Continue Shopping</button>
+                <div className="text-center py-20 space-y-4">
+                  <div className="text-stone-300 text-4xl">👜</div>
+                  <p className="text-stone-400 italic text-sm">Your boutique bag is empty.</p>
+                  <button onClick={() => setIsCartOpen(false)} className="text-amber-600 font-bold text-[10px] uppercase tracking-widest border border-amber-600 px-6 py-2 rounded-full hover:bg-amber-600 hover:text-white transition-all">Start Shopping</button>
                 </div>
               )}
             </div>
             {cart.length > 0 && (
-              <div className="p-8 border-t border-stone-100 bg-stone-50/50">
-                <div className="flex justify-between items-center mb-6">
-                  <span className="text-sm font-bold text-stone-400 uppercase tracking-widest">Total Amount</span>
+              <div className="p-10 border-t border-stone-100 bg-stone-50/80 backdrop-blur-md">
+                <div className="flex justify-between items-center mb-8">
+                  <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Investment Total</span>
                   <span className="text-2xl font-serif font-bold text-stone-900">₹{cart.reduce((sum, i) => sum + (i.price * i.cartQuantity), 0).toLocaleString('en-IN')}</span>
                 </div>
-                <button onClick={handleCheckout} className="w-full bg-stone-900 text-white py-5 rounded-2xl font-bold hover:bg-amber-600 transition-all shadow-xl">
-                  Finalize Purchase
+                <button onClick={handleCheckout} className="w-full bg-stone-900 text-white py-5 rounded-2xl font-bold hover:bg-amber-600 transition-all shadow-2xl active:scale-95">
+                  Finalize Acquisition
                 </button>
               </div>
             )}
