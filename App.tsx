@@ -8,7 +8,7 @@ import Community from './components/Community';
 import Contact from './components/Contact';
 import { Product, UserRole, CartItem, Order } from './types';
 import { INITIAL_PRODUCTS } from './services/mockData';
-import { syncToSheets, getUserRole } from './services/googleSheetsService';
+import { syncToSheets, getUserRole, getProducts } from './services/googleSheetsService';
 
 const App: React.FC = () => {
   const [role, setRole] = useState<UserRole | null>(null);
@@ -25,44 +25,77 @@ const App: React.FC = () => {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
+  // Load Initial Data
   useEffect(() => {
-    const savedProducts = localStorage.getItem('aura_products');
-    if (savedProducts) setProducts(JSON.parse(savedProducts));
-    const savedCart = localStorage.getItem('aura_cart');
-    if (savedCart) setCart(JSON.parse(savedCart));
-    const savedOrders = localStorage.getItem('aura_orders');
-    if (savedOrders) setOrders(JSON.parse(savedOrders));
+    const loadData = async () => {
+      setIsSyncing(true);
+      try {
+        // Try to get live products from Spreadsheet
+        const liveProducts = await getProducts();
+        if (liveProducts && liveProducts.length > 0) {
+          setProducts(liveProducts);
+        } else {
+          // Fallback to local storage if it exists, otherwise we keep INITIAL_PRODUCTS
+          const savedProducts = localStorage.getItem('aura_products');
+          if (savedProducts) {
+            const parsed = JSON.parse(savedProducts);
+            if (parsed && parsed.length > 0) {
+              setProducts(parsed);
+            }
+          }
+        }
+
+        const savedCart = localStorage.getItem('aura_cart');
+        if (savedCart) setCart(JSON.parse(savedCart));
+        
+        const savedOrders = localStorage.getItem('aura_orders');
+        if (savedOrders) setOrders(JSON.parse(savedOrders));
+      } catch (err) {
+        console.warn("Persistence error:", err);
+      } finally {
+        setTimeout(() => setIsSyncing(false), 500);
+      }
+    };
+    loadData();
   }, []);
 
   const handleAuth = async () => {
     if (!userEmail) return alert("Please enter your email.");
     
     setIsSyncing(true);
-    if (authMode === 'login') {
-      const remoteRole = await getUserRole(userEmail);
-      if (remoteRole) {
-        setRole(remoteRole as UserRole);
+    try {
+      if (authMode === 'login') {
+        const remoteRole = await getUserRole(userEmail);
+        if (remoteRole) {
+          setRole(remoteRole as UserRole);
+        } else {
+          const detectedRole = userEmail.toLowerCase().includes('admin') ? UserRole.ADMIN : UserRole.USER;
+          setRole(detectedRole);
+        }
       } else {
-        const detectedRole = userEmail.toLowerCase().includes('admin') ? UserRole.ADMIN : UserRole.USER;
-        setRole(detectedRole);
+        if (signupRole === UserRole.ADMIN && adminKey !== 'AURA2024') {
+          return alert("Invalid Staff Access Key.");
+        }
+        await syncToSheets('user', { email: userEmail, role: signupRole, timestamp: Date.now() });
+        setRole(signupRole);
       }
-    } else {
-      if (signupRole === UserRole.ADMIN && adminKey !== 'AURA2024') {
-        setIsSyncing(false);
-        return alert("Invalid Staff Access Key.");
-      }
-      await syncToSheets('user', { email: userEmail, role: signupRole, timestamp: Date.now() });
-      setRole(signupRole);
+    } catch (err) {
+      console.error("Auth sync failed:", err);
+      setRole(userEmail.toLowerCase().includes('admin') ? UserRole.ADMIN : UserRole.USER);
+    } finally {
+      setIsSyncing(false);
     }
-    setIsSyncing(false);
   };
 
   const saveProducts = async (newProducts: Product[]) => {
     setProducts(newProducts);
     localStorage.setItem('aura_products', JSON.stringify(newProducts));
     setIsSyncing(true);
-    await syncToSheets('product', newProducts);
-    setIsSyncing(false);
+    try {
+      await syncToSheets('product', newProducts);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const handleCheckout = async () => {
@@ -75,15 +108,18 @@ const App: React.FC = () => {
       timestamp: Date.now()
     };
     setIsSyncing(true);
-    const updatedOrders = [...orders, newOrder];
-    setOrders(updatedOrders);
-    localStorage.setItem('aura_orders', JSON.stringify(updatedOrders));
-    await syncToSheets('order', newOrder);
-    setCart([]);
-    localStorage.removeItem('aura_cart');
-    setIsCartOpen(false);
-    setIsSyncing(false);
-    alert(`Order ${newOrder.id} placed.`);
+    try {
+      const updatedOrders = [...orders, newOrder];
+      setOrders(updatedOrders);
+      localStorage.setItem('aura_orders', JSON.stringify(updatedOrders));
+      await syncToSheets('order', newOrder);
+      setCart([]);
+      localStorage.removeItem('aura_cart');
+      setIsCartOpen(false);
+      alert(`Order ${newOrder.id} placed.`);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const filteredProducts = useMemo(() => {
@@ -137,7 +173,7 @@ const App: React.FC = () => {
             </div>
             <button onClick={handleAuth} disabled={isSyncing} className="w-full bg-stone-900 text-white py-4 rounded-xl font-bold hover:bg-stone-800 transition-all flex items-center justify-center gap-2">
               {isSyncing && <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />}
-              {isSyncing ? 'Verifying with Spreadsheet...' : authMode === 'login' ? 'Enter Boutique' : 'Create Account'}
+              {isSyncing ? 'Verifying...' : authMode === 'login' ? 'Enter Boutique' : 'Create Account'}
             </button>
           </div>
         </div>
@@ -177,14 +213,17 @@ const App: React.FC = () => {
               {filteredProducts.map(p => (
                 <ProductCard key={p.id} product={p} onAddToCart={(prod) => { setCart(prev => [...prev, { ...prod, cartQuantity: 1 }]); setIsCartOpen(true); }} />
               ))}
+              {filteredProducts.length === 0 && (
+                <div className="col-span-full py-20 text-center text-stone-400 italic">No matches found in this category.</div>
+              )}
             </div>
           </div>
         </div>
       )}
 
-      {view === 'request' && <SpecialRequest onSync={async (data) => { setIsSyncing(true); await syncToSheets('special_request', { ...data, userEmail }); setIsSyncing(false); }} />}
-      {view === 'community' && <Community onSync={async (data) => { setIsSyncing(true); await syncToSheets('community_post', { ...data, userEmail }); setIsSyncing(false); }} />}
-      {view === 'contact' && <Contact onSync={async (data) => { setIsSyncing(true); await syncToSheets('message', { ...data, userEmail }); setIsSyncing(false); }} />}
+      {view === 'request' && <SpecialRequest onSync={async (data) => { setIsSyncing(true); try { await syncToSheets('special_request', { ...data, userEmail }); } finally { setIsSyncing(false); } }} />}
+      {view === 'community' && <Community onSync={async (data) => { setIsSyncing(true); try { await syncToSheets('community_post', { ...data, userEmail }); } finally { setIsSyncing(false); } }} />}
+      {view === 'contact' && <Contact onSync={async (data) => { setIsSyncing(true); try { await syncToSheets('message', { ...data, userEmail }); } finally { setIsSyncing(false); } }} />}
 
       {view === 'admin' && role === UserRole.ADMIN && (
         <AdminDashboard 
