@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Product, Category, Order, UserRole } from '../types';
 import { Icons, CATEGORIES } from '../constants';
 import { enhanceDescription } from '../services/geminiService';
@@ -24,6 +24,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, orders, onAdd
     imageUrl: 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&q=80&w=600'
   });
   const [aiLoading, setAiLoading] = useState(false);
+  const formRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (activeTab === 'users') fetchUsers();
@@ -50,6 +51,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, orders, onAdd
     const desc = await enhanceDescription(formData.name, formData.category || 'Jewelry');
     setFormData(prev => ({ ...prev, description: desc }));
     setAiLoading(false);
+  };
+
+  const handleEditInit = (p: Product) => {
+    setIsEditing(p.id);
+    setFormData({ ...p });
+    formRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -110,7 +117,6 @@ function doGet(e) {
 }
 
 function doPost(e) {
-  // Fix: Check if postData exists (prevents error when running manually in editor)
   if (!e || !e.postData || !e.postData.contents) {
     return respond({ error: "This function must be called via an HTTP POST request from the app." });
   }
@@ -202,32 +208,136 @@ function updateInventory(sheet, data) {
       </div>
 
       {activeTab === 'inventory' && (
-        <div className="bg-white p-8 md:p-12 rounded-[2.5rem] border border-stone-200 shadow-xl relative overflow-hidden">
-            <h2 className="text-3xl font-serif font-bold text-stone-800 mb-8">{isEditing ? 'Refine Selection' : 'Add New Treasure'}</h2>
-            <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-              <div className="space-y-6">
-                <input required placeholder="Product Name" className="w-full p-4 bg-stone-50 border border-stone-200 rounded-2xl outline-none" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
-                <div className="grid grid-cols-2 gap-6">
-                  <select className="p-4 bg-stone-50 border border-stone-200 rounded-2xl outline-none" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value as Category})}>
-                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <input required placeholder="SKU" className="p-4 bg-stone-50 border border-stone-200 rounded-2xl outline-none" value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value})} />
-                </div>
-                <div className="grid grid-cols-2 gap-6">
-                  <input type="number" required placeholder="Price" className="p-4 bg-stone-50 border border-stone-200 rounded-2xl outline-none" value={formData.price} onChange={e => setFormData({...formData, price: Number(e.target.value)})} />
-                  <input type="number" required placeholder="Quantity" className="p-4 bg-stone-50 border border-stone-200 rounded-2xl outline-none" value={formData.quantity} onChange={e => setFormData({...formData, quantity: Number(e.target.value)})} />
-                </div>
+        <div className="space-y-12">
+          {/* Add/Edit Form */}
+          <div ref={formRef} className="bg-white p-8 md:p-12 rounded-[2.5rem] border border-stone-200 shadow-xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-stone-50 rounded-bl-full -mr-16 -mt-16 z-0"></div>
+            <div className="relative z-10">
+              <div className="flex justify-between items-center mb-8">
+                <h2 className="text-3xl font-serif font-bold text-stone-800">
+                  {isEditing ? 'Refine Selection' : 'Add New Treasure'}
+                </h2>
+                {isEditing && (
+                  <button onClick={resetForm} className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Cancel Edit</button>
+                )}
               </div>
-              <div className="space-y-6">
-                <div className="relative">
-                  <textarea rows={4} placeholder="Description" className="w-full p-4 bg-stone-50 border border-stone-200 rounded-2xl outline-none" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
-                  <button type="button" onClick={handleEnhance} className="absolute right-3 bottom-3 text-amber-600 font-bold text-[10px] uppercase">{aiLoading ? '...' : '✨ AI Stylist'}</button>
+              <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                <div className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Name</label>
+                    <input required placeholder="Product Name" className="w-full p-4 bg-stone-50 border border-stone-200 rounded-2xl outline-none focus:ring-2 focus:ring-amber-500 transition-all" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Category</label>
+                      <select className="w-full p-4 bg-stone-50 border border-stone-200 rounded-2xl outline-none focus:ring-2 focus:ring-amber-500 transition-all" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value as Category})}>
+                        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">SKU</label>
+                      <input required placeholder="SKU-001" className="w-full p-4 bg-stone-50 border border-stone-200 rounded-2xl outline-none focus:ring-2 focus:ring-amber-500 transition-all" value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value})} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Price (₹)</label>
+                      <input type="number" required placeholder="0" className="w-full p-4 bg-stone-50 border border-stone-200 rounded-2xl outline-none focus:ring-2 focus:ring-amber-500 transition-all" value={formData.price} onChange={e => setFormData({...formData, price: Number(e.target.value)})} />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Quantity</label>
+                      <input type="number" required placeholder="1" className="w-full p-4 bg-stone-50 border border-stone-200 rounded-2xl outline-none focus:ring-2 focus:ring-amber-500 transition-all" value={formData.quantity} onChange={e => setFormData({...formData, quantity: Number(e.target.value)})} />
+                    </div>
+                  </div>
                 </div>
-                <input required placeholder="Image URL (Drive Link)" className="w-full p-4 bg-stone-50 border border-stone-200 rounded-2xl outline-none text-xs" value={formData.imageUrl} onChange={e => setFormData({...formData, imageUrl: e.target.value})} />
-                <button type="submit" className="w-full bg-stone-900 text-white py-5 rounded-2xl font-bold hover:bg-amber-600 transition-all">{isEditing ? 'Update Entry' : 'Commit to Catalog'}</button>
-              </div>
-            </form>
+                <div className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Description</label>
+                    <div className="relative">
+                      <textarea rows={4} placeholder="Story behind the piece..." className="w-full p-4 bg-stone-50 border border-stone-200 rounded-2xl outline-none focus:ring-2 focus:ring-amber-500 transition-all" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
+                      <button type="button" onClick={handleEnhance} className="absolute right-3 bottom-3 bg-white/80 backdrop-blur px-3 py-1.5 rounded-lg border border-amber-100 text-amber-600 font-bold text-[10px] uppercase shadow-sm hover:bg-amber-50 transition-colors">
+                        {aiLoading ? '✨ Crafting...' : '✨ AI Stylist'}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Image Source (Drive/Unsplash)</label>
+                    <input required placeholder="https://..." className="w-full p-4 bg-stone-50 border border-stone-200 rounded-2xl outline-none text-xs focus:ring-2 focus:ring-amber-500 transition-all" value={formData.imageUrl} onChange={e => setFormData({...formData, imageUrl: e.target.value})} />
+                  </div>
+                  <button type="submit" className="w-full bg-stone-900 text-white py-5 rounded-2xl font-bold hover:bg-amber-600 transition-all shadow-xl active:scale-95">
+                    {isEditing ? 'Update Entry' : 'Commit to Catalog'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
+
+          {/* Product List Section */}
+          <div className="bg-white rounded-[2.5rem] border border-stone-200 shadow-xl overflow-hidden">
+            <div className="p-8 border-b border-stone-100 flex justify-between items-center bg-stone-50/30">
+              <div>
+                <h3 className="text-xl font-serif font-bold text-stone-800">Current Collection</h3>
+                <p className="text-stone-400 text-xs mt-1">{products.length} items in local store</p>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="bg-stone-50/50">
+                  <tr>
+                    <th className="px-6 py-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest">Item</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest">SKU</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest">Category</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest">Price</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest">Stock</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100">
+                  {products.map(p => (
+                    <tr key={p.id} className="hover:bg-stone-50/50 transition-colors group">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg overflow-hidden bg-stone-100 shrink-0">
+                            <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover" />
+                          </div>
+                          <div className="font-medium text-stone-800 text-sm">{p.name}</div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 font-mono text-xs text-stone-400">{p.sku}</td>
+                      <td className="px-6 py-4">
+                        <span className="bg-stone-100 text-stone-600 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">{p.category}</span>
+                      </td>
+                      <td className="px-6 py-4 text-sm font-bold text-stone-800">₹{p.price.toLocaleString('en-IN')}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-1.5 h-1.5 rounded-full ${p.quantity > 5 ? 'bg-green-500' : p.quantity > 0 ? 'bg-amber-500' : 'bg-red-500'}`} />
+                          <span className="text-xs text-stone-500">{p.quantity} units</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button onClick={() => handleEditInit(p)} className="p-2 text-stone-400 hover:text-amber-600 transition-colors">
+                            <Icons.Edit />
+                          </button>
+                          <button onClick={() => onDelete(p.id)} className="p-2 text-stone-400 hover:text-red-500 transition-colors">
+                            <Icons.Trash />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {products.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-20 text-center text-stone-400 italic text-sm">
+                        No treasures found. Begin your legacy by adding the first item.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       )}
 
       {activeTab === 'requests' && (
