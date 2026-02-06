@@ -340,35 +340,126 @@ function updateInventory(sheet, data) {
         </div>
       )}
 
+      {activeTab === 'orders' && (
+        <div className="bg-white rounded-[2.5rem] border border-stone-200 shadow-xl overflow-hidden animate-in fade-in">
+          <div className="p-8 border-b border-stone-100 bg-stone-50/30">
+            <h3 className="text-2xl font-serif font-bold text-stone-800">Order Manifest</h3>
+            <p className="text-stone-400 text-xs mt-1">Review and manage recent customer transactions</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-stone-50/50">
+                <tr>
+                  <th className="px-6 py-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest">Order ID</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest">Customer</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest">Items</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest">Total</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest">Date</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-stone-100">
+                {orders.map(order => (
+                  <tr key={order.id} className="hover:bg-stone-50/50 transition-colors">
+                    <td className="px-6 py-4 font-mono text-xs text-amber-600 font-bold">{order.id}</td>
+                    <td className="px-6 py-4 text-sm text-stone-800">{order.userEmail}</td>
+                    <td className="px-6 py-4 text-xs text-stone-500">
+                      {order.items.map(i => `${i.cartQuantity}x ${i.name}`).join(', ')}
+                    </td>
+                    <td className="px-6 py-4 text-sm font-bold text-stone-800">₹{order.total.toLocaleString('en-IN')}</td>
+                    <td className="px-6 py-4 text-xs text-stone-400">{new Date(order.timestamp).toLocaleDateString()}</td>
+                  </tr>
+                ))}
+                {orders.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-20 text-center text-stone-400 italic text-sm">
+                      No orders recorded yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'users' && (
+        <div className="bg-white rounded-[2.5rem] border border-stone-200 shadow-xl overflow-hidden animate-in fade-in">
+          <div className="p-8 border-b border-stone-100 bg-stone-50/30 flex justify-between items-center">
+            <div>
+              <h3 className="text-2xl font-serif font-bold text-stone-800">Registry</h3>
+              <p className="text-stone-400 text-xs mt-1">Authorized personnel and customer directory</p>
+            </div>
+            <button onClick={fetchUsers} className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Refresh Registry</button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-stone-50/50">
+                <tr>
+                  <th className="px-6 py-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest">Identity</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest">Role</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest">Access Granted</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-stone-100">
+                {users.map((user, idx) => (
+                  <tr key={idx} className="hover:bg-stone-50/50 transition-colors">
+                    <td className="px-6 py-4 text-sm text-stone-800 font-medium">{user.email}</td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2 py-1 rounded text-[9px] font-bold uppercase tracking-wider ${user.role === 'ADMIN' ? 'bg-amber-100 text-amber-700' : 'bg-stone-100 text-stone-600'}`}>
+                        {user.role}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-xs text-stone-400">
+                      {user.timestamp ? new Date(user.timestamp).toLocaleString() : 'N/A'}
+                    </td>
+                  </tr>
+                ))}
+                {users.length === 0 && !isSyncing && (
+                  <tr>
+                    <td colSpan={3} className="px-6 py-20 text-center text-stone-400 italic text-sm">
+                      The registry is currently empty. Connect to Sheets to view real-time user data.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {activeTab === 'requests' && (
-        <div className="bg-white p-12 rounded-[2.5rem] border border-stone-200 shadow-xl space-y-8">
+        <div className="bg-white p-12 rounded-[2.5rem] border border-stone-200 shadow-xl space-y-8 animate-in fade-in">
           <div className="flex justify-between items-center">
-            <h2 className="text-3xl font-serif font-bold text-stone-800">User Views: Bespoke Requests</h2>
+            <h2 className="text-3xl font-serif font-bold text-stone-800">Bespoke Design Requests</h2>
             <button onClick={fetchRequests} className="text-xs font-bold text-amber-600 uppercase tracking-widest">{isSyncing ? 'Loading...' : '↻ Refresh'}</button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {requests.map((req, idx) => (
-                <div key={idx} className="p-6 bg-stone-50 rounded-3xl border border-stone-100 flex gap-6">
+                <div key={idx} className="p-6 bg-stone-50 rounded-3xl border border-stone-100 flex gap-6 hover:shadow-md transition-all">
                     <div className="w-24 h-24 bg-stone-200 rounded-2xl overflow-hidden shrink-0">
-                        {req.image && <img src={req.image} className="w-full h-full object-cover" alt="Request" />}
+                        {req.image ? <img src={req.image} className="w-full h-full object-cover" alt="Request" /> : <div className="w-full h-full flex items-center justify-center text-stone-300">No Image</div>}
                     </div>
                     <div className="space-y-2">
-                        <div className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">{req.view} Request</div>
+                        <div className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">{req.view || 'Custom'} Style</div>
                         <p className="text-sm font-medium text-stone-800 line-clamp-2">{req.description}</p>
-                        <div className="flex justify-between text-[10px] text-stone-400">
-                            <span>Qty: {req.quantity}</span>
+                        <div className="flex justify-between text-[10px] text-stone-400 pt-2 border-t border-stone-200">
+                            <span>Quantity: {req.quantity}</span>
                             <span>Due: {req.dueDate}</span>
                         </div>
                     </div>
                 </div>
             ))}
-            {requests.length === 0 && <p className="text-stone-400 italic text-sm">No bespoke requests found in Sheets/Drive. Configure your Backend to sync real user data.</p>}
+            {requests.length === 0 && (
+              <div className="col-span-full py-20 text-center text-stone-400 italic text-sm border-2 border-dashed border-stone-100 rounded-3xl">
+                No bespoke requests found in your archives.
+              </div>
+            )}
           </div>
         </div>
       )}
 
       {activeTab === 'guide' && (
-        <div className="bg-white p-10 md:p-14 rounded-[2.5rem] border border-stone-200 shadow-xl max-w-4xl mx-auto space-y-12">
+        <div className="bg-white p-10 md:p-14 rounded-[2.5rem] border border-stone-200 shadow-xl max-w-4xl mx-auto space-y-12 animate-in fade-in">
           <div className="flex flex-col gap-4">
             <div className="bg-amber-50 border border-amber-200 p-6 rounded-3xl">
               <h3 className="text-amber-800 font-bold mb-2">⚙️ Backend Configuration Guide</h3>
