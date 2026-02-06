@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Product, Category, Order, UserRole } from '../types';
+import { Product, Category, Order, CartItem } from '../types';
 import { Icons, CATEGORIES } from '../constants';
 import { enhanceDescription } from '../services/geminiService';
 
@@ -24,7 +24,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, orders, onAdd
     if (!formData.name) return;
     setAiLoading(true);
     const desc = await enhanceDescription(formData.name, formData.category || 'Jewelry');
-    setFormData(prev => ({ ...prev, description: desc }));
+    setFormData((prev: Partial<Product>) => ({ ...prev, description: desc }));
     setAiLoading(false);
   };
 
@@ -59,12 +59,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, orders, onAdd
   };
 
   // Analytics Calculations
-  const totalRevenue = orders.reduce((sum, o) => sum + o.total, 0);
+  const totalRevenue = orders.reduce((sum: number, o: Order) => sum + o.total, 0);
   const avgOrderValue = orders.length > 0 ? totalRevenue / orders.length : 0;
   
-  const categorySales = orders.reduce((acc, order) => {
-    order.items.forEach(item => {
-      acc[item.category] = (acc[item.category] || 0) + (item.price * item.cartQuantity);
+  const categorySales = orders.reduce((acc: Record<string, number>, order: Order) => {
+    order.items.forEach((item: CartItem) => {
+      const cat = item.category as string;
+      acc[cat] = (acc[cat] || 0) + (item.price * item.cartQuantity);
     });
     return acc;
   }, {} as Record<string, number>);
@@ -89,7 +90,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, orders, onAdd
                 <input required placeholder="Product Name" className="w-full p-4 bg-stone-50 border border-stone-200 rounded-2xl outline-none focus:ring-2 focus:ring-amber-500" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
                 <div className="grid grid-cols-2 gap-6">
                   <select className="p-4 bg-stone-50 border border-stone-200 rounded-2xl outline-none" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value as Category})}>
-                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    {CATEGORIES.map((c: string) => <option key={c} value={c}>{c}</option>)}
                   </select>
                   <input required placeholder="SKU" className="p-4 bg-stone-50 border border-stone-200 rounded-2xl outline-none" value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value})} />
                 </div>
@@ -132,7 +133,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, orders, onAdd
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100">
-                  {products.map(p => (
+                  {products.map((p: Product) => (
                     <tr key={p.id} className="hover:bg-stone-50/50 transition-colors">
                       <td className="px-8 py-4">
                         <div className="flex items-center gap-4">
@@ -175,7 +176,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, orders, onAdd
               {orders.length === 0 ? (
                 <div className="text-center py-20 text-stone-400 italic">No sales recorded yet.</div>
               ) : (
-                orders.sort((a,b) => b.timestamp - a.timestamp).map(order => (
+                orders.sort((a,b) => b.timestamp - a.timestamp).map((order: Order) => (
                   <div key={order.id} className="bg-stone-50 rounded-3xl p-6 border border-stone-100 hover:border-amber-200 transition-all">
                     <div className="flex flex-col md:flex-row justify-between mb-6 gap-4">
                       <div>
@@ -189,7 +190,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, orders, onAdd
                       </div>
                     </div>
                     <div className="border-t border-stone-200/50 pt-4 flex flex-wrap gap-2">
-                      {order.items.map((item, idx) => (
+                      {order.items.map((item: CartItem, idx: number) => (
                         <div key={idx} className="bg-white px-3 py-1.5 rounded-xl border border-stone-100 text-[10px] font-medium text-stone-600">
                           {item.cartQuantity}x {item.name}
                         </div>
@@ -229,8 +230,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, orders, onAdd
                 <div className="text-center py-10 text-stone-400 italic">No category data available.</div>
               ) : (
                 Object.entries(categorySales)
-                  .sort((a,b) => b[1] - a[1])
-                  .map(([cat, val]) => (
+                  .sort((a: [string, number], b: [string, number]) => b[1] - a[1])
+                  .map(([cat, val]: [string, number]) => (
                     <div key={cat} className="space-y-2">
                       <div className="flex justify-between text-xs font-bold uppercase tracking-wider">
                         <span className="text-stone-800">{cat}</span>
@@ -239,7 +240,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, orders, onAdd
                       <div className="h-3 bg-stone-100 rounded-full overflow-hidden">
                         <div 
                           className="h-full bg-amber-500 rounded-full transition-all duration-1000" 
-                          style={{ width: `${(val / totalRevenue) * 100}%` }}
+                          style={{ width: `${totalRevenue > 0 ? (val / totalRevenue) * 100 : 0}%` }}
                         />
                       </div>
                     </div>
