@@ -1,13 +1,6 @@
 
 /**
  * GOOGLE SHEETS & DRIVE INTEGRATION SERVICE
- * Spreadsheet ID: 1gVxwGh4ZJ2_U4bGlwAdeoTvFp_Crxzpyaf5XEUJaVMQ
- * 
- * To make this LIVE: 
- * 1. Go to your Spreadsheet (ID: 1gVxwGh4ZJ2_U4bGlwAdeoTvFp_Crxzpyaf5XEUJaVMQ)
- * 2. Go to Extensions > Apps Script
- * 3. Copy the script provided in the Admin Dashboard > Connection Guide
- * 4. Deploy as Web App (Anyone access) and paste the URL below.
  */
 
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbygRcPeoMCGgfuqAAwE_5vo52AuSD2t2kaD-ln8JlI7eHc5v-X5ajIbyg2ol10Awo2g/exec'; 
@@ -18,14 +11,15 @@ export const syncToSheets = async (action: 'user' | 'product' | 'order' | 'repor
   if (!SCRIPT_URL || SCRIPT_URL.includes('YOUR_DEPLOYED_SCRIPT_ID')) {
     return new Promise((resolve) => {
       setTimeout(() => {
-        console.log(`[SIMULATION] ${action} logged to virtual spreadsheet ${action === 'user' ? 'Users' : 'Database'}.`);
+        console.log(`[SIMULATION] ${action} logged to virtual spreadsheet.`);
         resolve(true);
       }, 800);
     });
   }
 
   try {
-    const response = await fetch(SCRIPT_URL, {
+    // Note: mode 'no-cors' is used for POST requests to Apps Script as it doesn't return standard CORS headers
+    await fetch(SCRIPT_URL, {
       method: 'POST',
       mode: 'no-cors',
       headers: { 'Content-Type': 'application/json' },
@@ -35,6 +29,28 @@ export const syncToSheets = async (action: 'user' | 'product' | 'order' | 'repor
   } catch (error) {
     console.error("Sync failed:", error);
     return false;
+  }
+};
+
+/**
+ * Fetches the user's role from the spreadsheet.
+ * This allows an Admin to manually change a role in the Sheet and have it reflect in the app.
+ */
+export const getUserRole = async (email: string): Promise<'ADMIN' | 'USER' | null> => {
+  if (!SCRIPT_URL || SCRIPT_URL.includes('YOUR_DEPLOYED_SCRIPT_ID')) {
+    // Simulation logic for demo
+    if (email.toLowerCase().includes('admin')) return 'ADMIN';
+    return 'USER';
+  }
+
+  try {
+    // For GET requests, Apps Script supports standard JSON returns
+    const response = await fetch(`${SCRIPT_URL}?action=getRole&email=${encodeURIComponent(email)}`);
+    const result = await response.json();
+    return result.role; // Expecting { role: 'ADMIN' | 'USER' }
+  } catch (error) {
+    console.warn("Failed to fetch role from sheets, falling back to local detection.", error);
+    return null;
   }
 };
 
