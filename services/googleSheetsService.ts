@@ -25,10 +25,12 @@ export const syncToSheets = async (action: 'user' | 'product' | 'order' | 'speci
   }
 
   try {
+    // We use 'no-cors' only if the endpoint doesn't support preflight, 
+    // but for Apps Script, POST with body often works best with regular fetch if handled carefully.
     await fetch(SCRIPT_URL, {
       method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'application/json' },
+      mode: 'no-cors', // Standard for Apps Script redirects
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Avoids preflight
       body: JSON.stringify({ action, data })
     });
     return true;
